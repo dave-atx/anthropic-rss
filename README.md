@@ -40,6 +40,7 @@ uv sync --group dev
 uv run pytest
 uv run python -m src.main          # daily run (checks page 1-2)
 uv run python -m src.main --backfill   # fetch all historical posts
+uv run python -m src.main --refresh    # re-fetch all known posts, overwriting stored data
 ```
 
 ## Disclaimer

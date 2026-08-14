@@ -5,7 +5,14 @@ from pathlib import Path
 import pytest
 from bs4 import BeautifulSoup
 
-from src.scrape import _extract_detail, _extract_detail_list, _parse_date
+from src.scrape import (
+    _extract_detail,
+    _extract_detail_list,
+    _extract_image,
+    _extract_json_ld,
+    _extract_summary,
+    _parse_date,
+)
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -15,7 +22,13 @@ def listing_html() -> str:
 
 
 def post_html() -> str:
+    """Post with no byline and no per-post social image (generic fallback only)."""
     return (FIXTURES / "post_example.html").read_text()
+
+
+def post_with_author_html() -> str:
+    """Post with a multi-author byline and a real per-post social image."""
+    return (FIXTURES / "post_example_with_author.html").read_text()
 
 
 # ── listing page ──────────────────────────────────────────────────────────────
@@ -76,6 +89,50 @@ def test_post_extracts_body_html():
     assert body_div is not None, "blog_post_content_wrap not found"
     text = body_div.get_text()
     assert len(text) > 200, "Article body seems too short"
+
+
+# ── authors ──────────────────────────────────────────────────────────────────
+
+def test_post_without_author_returns_empty_list():
+    soup = BeautifulSoup(post_html(), "lxml")
+    assert _extract_detail_list(soup, "Author(s)") == []
+
+
+def test_post_with_author_extracts_names():
+    soup = BeautifulSoup(post_with_author_html(), "lxml")
+    authors = _extract_detail_list(soup, "Author(s)")
+    assert authors == ["Clement Peng", "Lily Zhao"]
+
+
+# ── JSON-LD summary ──────────────────────────────────────────────────────────
+
+def test_extract_summary_unescapes_html_entities():
+    soup = BeautifulSoup(post_html(), "lxml")
+    summary = _extract_summary(_extract_json_ld(soup))
+    assert summary, "Expected a non-empty summary"
+    assert "&#x27;" not in summary and "&#39;" not in summary
+
+
+def test_extract_summary_missing_json_ld_returns_empty():
+    assert _extract_summary({}) == ""
+
+
+# ── per-post image ───────────────────────────────────────────────────────────
+
+def test_post_without_custom_image_falls_back_to_generic():
+    """No per-post og:image card → last non-empty og:image is the site's
+    generic fallback, per Dave's decision to show it rather than nothing."""
+    soup = BeautifulSoup(post_html(), "lxml")
+    image = _extract_image(soup, _extract_json_ld(soup))
+    assert image.startswith("https://")
+    assert "generic" in image
+
+
+def test_post_with_custom_image_uses_per_post_card():
+    soup = BeautifulSoup(post_with_author_html(), "lxml")
+    image = _extract_image(soup, _extract_json_ld(soup))
+    assert image.startswith("https://")
+    assert "generic" not in image
 
 
 # ── date parser ───────────────────────────────────────────────────────────────

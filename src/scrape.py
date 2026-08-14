@@ -1,5 +1,7 @@
 """Scrape post listings and post content from claude.com/blog."""
 
+import html
+import json
 import logging
 import re
 import time
@@ -85,6 +87,11 @@ def fetch_post(slug: str) -> dict | None:
     pub_date = _parse_date(date_str)
 
     categories = _extract_detail_list(soup, "Category")
+    authors = _extract_detail_list(soup, "Author(s)")
+
+    json_ld = _extract_json_ld(soup)
+    summary = _extract_summary(json_ld)
+    image_url = _extract_image(soup, json_ld)
 
     body_div = soup.find("div", class_="blog_post_content_wrap")
     if body_div:
@@ -100,6 +107,9 @@ def fetch_post(slug: str) -> dict | None:
         "date_str": date_str or "",
         "pub_date": pub_date.isoformat() if pub_date else "",
         "categories": categories,
+        "authors": authors,
+        "summary": summary,
+        "image_url": image_url,
         "html_body": html_body,
     }
 
@@ -136,6 +146,40 @@ def _extract_detail_list(soup: BeautifulSoup, label: str) -> list[str]:
             ]
             return [t for t in texts if t]
     return []
+
+
+def _extract_json_ld(soup: BeautifulSoup) -> dict:
+    """Return the BlogPosting JSON-LD block for a post, or {} if absent/invalid."""
+    for script in soup.find_all("script", type="application/ld+json"):
+        try:
+            data = json.loads(script.string or "")
+        except (json.JSONDecodeError, TypeError):
+            continue
+        if isinstance(data, dict) and data.get("@type") == "BlogPosting":
+            return data
+    return {}
+
+
+def _extract_summary(json_ld: dict) -> str:
+    """Short teaser for RSS <description>, from JSON-LD (HTML-entity-decoded)."""
+    return html.unescape(json_ld.get("description") or "").strip()
+
+
+def _extract_image(soup: BeautifulSoup, json_ld: dict) -> str:
+    """Per-post image: last non-empty og:image, falling back to JSON-LD image.
+
+    claude.com/blog emits an empty og:image placeholder followed by a real one
+    (either a per-post card or the site's generic fallback), so the last
+    non-empty value is always the right one to use.
+    """
+    og_images = [
+        (m.get("content") or "").strip()
+        for m in soup.find_all("meta", attrs={"property": "og:image"})
+    ]
+    og_images = [u for u in og_images if u]
+    if og_images:
+        return og_images[-1]
+    return (json_ld.get("image") or "").strip()
 
 
 _DATE_FORMATS = ["%B %d, %Y", "%b %d, %Y"]

@@ -58,6 +58,12 @@ def fetch_new_posts(new_slugs: list[tuple[str, str]], delay: float = REQUEST_DEL
 def main() -> None:
     parser = argparse.ArgumentParser(description="Update claude.com/blog RSS feed")
     parser.add_argument("--backfill", action="store_true", help="Fetch all listing pages (initial run)")
+    parser.add_argument(
+        "--refresh",
+        action="store_true",
+        help="Re-fetch every already-known post too, overwriting its stored data "
+        "(use after a scraper change to backfill new fields onto old posts)",
+    )
     parser.add_argument("--feed-count", type=int, default=20, help="Number of items in the feed (default: 20)")
     args = parser.parse_args()
 
@@ -73,8 +79,14 @@ def main() -> None:
             if page < DAILY_PAGES:
                 time.sleep(REQUEST_DELAY)
 
-    new_slugs = [(slug, title) for slug, title in listing if slug not in posts]
-    logger.info("New posts to fetch: %d", len(new_slugs))
+    if args.refresh:
+        discovered_slugs = {slug for slug, _title in listing}
+        all_slugs = set(posts) | discovered_slugs
+        new_slugs = [(slug, "") for slug in all_slugs]
+        logger.info("Refreshing all %d known posts (plus any newly discovered)", len(new_slugs))
+    else:
+        new_slugs = [(slug, title) for slug, title in listing if slug not in posts]
+        logger.info("New posts to fetch: %d", len(new_slugs))
 
     if new_slugs:
         fetched = fetch_new_posts(new_slugs)

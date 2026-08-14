@@ -12,6 +12,12 @@ FEED_DESCRIPTION = (
 )
 FEED_LINK = "https://claude.com/blog"
 FEED_LANGUAGE = "en"
+FEED_COPYRIGHT = "Content © Anthropic. Unofficial, unaffiliated feed."
+# Largest favicon-family asset claude.com serves (256x256 apple-touch-icon).
+FEED_IMAGE_URL = (
+    "https://cdn.prod.website-files.com/6889473510b50328dbb70ae6/"
+    "68c33859cc6cd903686c66a2_apple-touch-icon.png"
+)
 
 # tag: URI (RFC 4151) authority/date for entry ids. Gives a stable,
 # URL-independent guid instead of the post URL, which has already moved once
@@ -32,14 +38,18 @@ def render(posts: list[dict], feed_url: str | None = None) -> str:
     feed_url = feed_url or os.environ.get("FEED_URL", _DEFAULT_FEED_URL)
 
     fg = FeedGenerator()
+    fg.load_extension("dc")
+    fg.load_extension("media")
     fg.id(feed_url)
     fg.title(FEED_TITLE)
     fg.description(FEED_DESCRIPTION)
+    fg.copyright(FEED_COPYRIGHT)
     # feedgen's RSS <link> takes whichever link() call happens last, so the
     # self-referencing atom:link must be added first and the human-facing
     # alternate link (what RSS readers show as "visit site") added last.
     fg.link(href=feed_url, rel="self")
     fg.link(href=FEED_LINK, rel="alternate")
+    fg.image(url=FEED_IMAGE_URL, title=FEED_TITLE, link=FEED_LINK)
     fg.language(FEED_LANGUAGE)
 
     # feedgen.add_entry() prepends, so iterate oldest-first to get newest-first output
@@ -72,9 +82,21 @@ def render(posts: list[dict], feed_url: str | None = None) -> str:
             for cat in post["categories"]:
                 fe.category({"term": cat})
 
-        if post.get("html_body"):
-            fe.content(post["html_body"], type="html")
-        elif post.get("title"):
+        if post.get("authors"):
+            fe.dc.dc_creator(post["authors"])
+
+        if post.get("image_url"):
+            fe.media.thumbnail(url=post["image_url"])
+
+        summary = (post.get("summary") or "").strip()
+        html_body = post.get("html_body") or ""
+
+        if summary:
+            fe.description(summary, isSummary=True)
+
+        if html_body:
+            fe.content(html_body, type="html")
+        elif not summary:
             fe.content(
                 f'<p><a href="{post["url"]}">{post["title"]}</a></p>', type="html"
             )
