@@ -2,6 +2,8 @@
 
 import xml.etree.ElementTree as ET
 
+import feedparser
+
 from src.feed import FEED_LINK, render, render_atom
 
 NS = {
@@ -227,3 +229,60 @@ def test_atom_channel_has_logo_and_rights():
     root = ET.fromstring(render_atom(_make_posts(1)))
     assert root.find("atom:logo", NS).text.startswith("https://")
     assert root.find("atom:rights", NS).text
+
+
+def test_atom_feed_has_author_when_entries_dont():
+    """RFC 4287 4.1.1: atom:feed MUST have atom:author unless every entry
+    does. Most posts have no byline, so the feed-level one is load-bearing."""
+    root = ET.fromstring(render_atom(_make_posts(1)))
+    assert root.find("atom:author/atom:name", NS).text
+
+
+def test_atom_entry_with_authors_has_own_author_element():
+    posts = _make_posts(1)
+    posts[0]["authors"] = ["Jane Doe", "John Smith"]
+    root = ET.fromstring(render_atom(posts))
+    entry = root.find("atom:entry", NS)
+    names = [a.find("atom:name", NS).text for a in entry.findall("atom:author", NS)]
+    assert names == ["Jane Doe", "John Smith"]
+
+
+def test_rss_entry_author_unaffected_by_name_only_atom_author():
+    """FeedEntry.author() only touches rss:author when an email is given, so
+    name-only authors must not leak an empty/malformed <author> into RSS."""
+    posts = _make_posts(1)
+    posts[0]["authors"] = ["Jane Doe"]
+    root = ET.fromstring(render(posts))
+    assert root.find("channel/item/author") is None
+
+
+# ── feedparser round-trip (structural validity, not just well-formedness) ────
+
+def _feedparser_posts():
+    posts = _make_posts(2)
+    posts[0]["authors"] = ["Jane Doe"]
+    posts[0]["image_url"] = "https://example.com/img.jpg"
+    posts[0]["summary"] = "A short teaser."
+    posts[1]["categories"] = ["Product", "Claude Code"]
+    return posts
+
+
+def test_feedparser_parses_rss_without_errors():
+    parsed = feedparser.parse(render(_feedparser_posts()))
+    assert not parsed.bozo, getattr(parsed, "bozo_exception", None)
+    assert len(parsed.entries) == 2
+
+
+def test_feedparser_parses_atom_without_errors():
+    parsed = feedparser.parse(render_atom(_feedparser_posts()))
+    assert not parsed.bozo, getattr(parsed, "bozo_exception", None)
+    assert len(parsed.entries) == 2
+
+
+def test_feedparser_atom_round_trips_author_and_summary():
+    parsed = feedparser.parse(render_atom(_feedparser_posts()))
+    assert parsed.feed.get("author") == "Anthropic"
+    by_title = {e.title: e for e in parsed.entries}
+    assert by_title["Post 0"].get("author") == "Jane Doe"
+    assert by_title["Post 0"].get("summary") == "A short teaser."
+    assert by_title["Post 1"].get("author") is None
