@@ -2,7 +2,7 @@
 <feed xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:media="http://search.yahoo.com/mrss/" xmlns="http://www.w3.org/2005/Atom" xml:lang="en">
   <id>https://dave-atx.github.io/anthropic-rss/atom.xml</id>
   <title>Claude Blog (unofficial RSS)</title>
-  <updated>2026-08-14T16:58:43.203467+00:00</updated>
+  <updated>2026-08-14T17:02:45.002698+00:00</updated>
   <link href="https://dave-atx.github.io/anthropic-rss/atom.xml" rel="self"/>
   <link href="https://claude.com/blog" rel="alternate"/>
   <generator uri="https://lkiesow.github.io/python-feedgen" version="1.0.0">python-feedgen</generator>
