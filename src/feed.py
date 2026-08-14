@@ -1,4 +1,4 @@
-"""Generate RSS 2.0 feed from post dicts."""
+"""Generate RSS 2.0 and Atom 1.0 feeds from post dicts."""
 
 import os
 from datetime import datetime, timezone
@@ -19,14 +19,24 @@ FEED_IMAGE_URL = (
     "68c33859cc6cd903686c66a2_apple-touch-icon.png"
 )
 
-# Override via FEED_URL env var (set to your GitHub Pages URL once known)
+# tag: URI (RFC 4151) authority/date for entry ids. Valid as both a
+# spec-conformant atom:id and a stable, URL-independent RSS guid. The date is
+# simply when this identifier scheme was introduced, not a per-post date.
+TAG_AUTHORITY = "claude.com"
+TAG_DATE = "2026"
+
+# Override via FEED_URL / ATOM_FEED_URL env vars (set to your GitHub Pages
+# URLs once known)
 _DEFAULT_FEED_URL = "https://dave-atx.github.io/anthropic-rss/rss.xml"
+_DEFAULT_ATOM_FEED_URL = "https://dave-atx.github.io/anthropic-rss/atom.xml"
 
 
-def render(posts: list[dict], feed_url: str | None = None) -> str:
-    """Render posts (most-recent-first) to RSS 2.0 XML string."""
-    feed_url = feed_url or os.environ.get("FEED_URL", _DEFAULT_FEED_URL)
+def _entry_id(slug: str) -> str:
+    return f"tag:{TAG_AUTHORITY},{TAG_DATE}:{slug}"
 
+
+def _build_feed_generator(posts: list[dict], feed_url: str) -> FeedGenerator:
+    """Populate a FeedGenerator with channel + entry data shared by RSS/Atom."""
     fg = FeedGenerator()
     fg.load_extension("dc")
     fg.load_extension("media")
@@ -51,10 +61,11 @@ def render(posts: list[dict], feed_url: str | None = None) -> str:
 
     for post in sorted_posts:
         fe = fg.add_entry()
-        # Opaque, URL-independent id: posts.json is already keyed by slug, and
+        # A tag: URI is a spec-valid atom:id and doubles as a stable,
+        # URL-independent RSS guid: posts.json is already keyed by slug, and
         # this survives a future domain move the way a URL-based guid wouldn't
         # (claude.com/blog is itself already a migration from claude.ai/blog).
-        fe.id(post["slug"])
+        fe.id(_entry_id(post["slug"]))
         fe.title(post["title"] or post["slug"])
         fe.link(href=post["url"])
 
@@ -82,7 +93,9 @@ def render(posts: list[dict], feed_url: str | None = None) -> str:
         html_body = post.get("html_body") or ""
 
         if summary:
-            fe.description(summary)
+            # isSummary=True routes this to atom:summary (leaving atom:content
+            # for the full body below) as well as rss:description.
+            fe.description(summary, isSummary=True)
 
         if html_body:
             fe.content(html_body, type="html")
@@ -91,4 +104,18 @@ def render(posts: list[dict], feed_url: str | None = None) -> str:
                 f'<p><a href="{post["url"]}">{post["title"]}</a></p>', type="html"
             )
 
+    return fg
+
+
+def render(posts: list[dict], feed_url: str | None = None) -> str:
+    """Render posts (most-recent-first) to an RSS 2.0 XML string."""
+    feed_url = feed_url or os.environ.get("FEED_URL", _DEFAULT_FEED_URL)
+    fg = _build_feed_generator(posts, feed_url)
     return fg.rss_str(pretty=True).decode("utf-8")
+
+
+def render_atom(posts: list[dict], feed_url: str | None = None) -> str:
+    """Render posts (most-recent-first) to an Atom 1.0 XML string."""
+    feed_url = feed_url or os.environ.get("ATOM_FEED_URL", _DEFAULT_ATOM_FEED_URL)
+    fg = _build_feed_generator(posts, feed_url)
+    return fg.atom_str(pretty=True).decode("utf-8")
