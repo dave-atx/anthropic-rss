@@ -17,6 +17,7 @@ dev = [
 
 [dependency-groups]
 dev = [
+    "feedparser>=6.0.14",
     "pytest>=8.0",
 ]
 

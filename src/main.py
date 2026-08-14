@@ -8,13 +8,14 @@ import time
 from pathlib import Path
 
 from .scrape import fetch_post, list_slugs, scrape_all_pages, REQUEST_DELAY
-from .feed import render
+from .feed import render, render_atom
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
 POSTS_PATH = Path(__file__).parent.parent / "data" / "posts.json"
 FEED_PATH = Path(__file__).parent.parent / "docs" / "rss.xml"
+ATOM_FEED_PATH = Path(__file__).parent.parent / "docs" / "atom.xml"
 
 DAILY_PAGES = 2
 
@@ -37,10 +38,14 @@ def save_feed(posts: dict[str, dict], feed_count: int = 20) -> None:
     FEED_PATH.parent.mkdir(parents=True, exist_ok=True)
     post_list = list(posts.values())
     feed_posts = sorted(post_list, key=lambda p: p.get("pub_date") or "", reverse=True)[:feed_count]
-    xml = render(feed_posts)
+
     with FEED_PATH.open("w") as f:
-        f.write(xml)
-    logger.info("Feed written: %s (%d items)", FEED_PATH, len(feed_posts))
+        f.write(render(feed_posts))
+    logger.info("RSS feed written: %s (%d items)", FEED_PATH, len(feed_posts))
+
+    with ATOM_FEED_PATH.open("w") as f:
+        f.write(render_atom(feed_posts))
+    logger.info("Atom feed written: %s (%d items)", ATOM_FEED_PATH, len(feed_posts))
 
 
 def fetch_new_posts(new_slugs: list[tuple[str, str]], delay: float = REQUEST_DELAY) -> dict[str, dict]:
