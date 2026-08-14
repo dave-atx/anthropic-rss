@@ -2,7 +2,7 @@
 
 import xml.etree.ElementTree as ET
 
-from src.feed import render
+from src.feed import FEED_LINK, render
 
 
 def _make_posts(n: int) -> list[dict]:
@@ -66,3 +66,23 @@ def test_feed_empty_posts():
     root = ET.fromstring(xml_str)
     channel = root.find("channel")
     assert len(channel.findall("item")) == 0
+
+
+def test_channel_link_is_blog_not_feed_url():
+    """Regression test: feedgen's link() uses the *last* call for RSS <link>,
+    so the alternate (blog) link must survive being added after the self link."""
+    xml_str = render(_make_posts(1), feed_url="https://example.github.io/rss.xml")
+    root = ET.fromstring(xml_str)
+    channel = root.find("channel")
+    assert channel.find("link").text == FEED_LINK
+
+
+def test_entry_guid_is_tag_uri_not_url():
+    """Regression test: a bare URL guid marked isPermaLink="false" is a
+    contradictory combination; a tag: URI is unambiguously opaque."""
+    posts = _make_posts(1)
+    xml_str = render(posts)
+    root = ET.fromstring(xml_str)
+    guid = root.find("channel/item/guid")
+    assert guid.text == "tag:claude.com,2026:post-0"
+    assert guid.attrib["isPermaLink"] == "false"

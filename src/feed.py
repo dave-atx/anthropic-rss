@@ -13,8 +13,18 @@ FEED_DESCRIPTION = (
 FEED_LINK = "https://claude.com/blog"
 FEED_LANGUAGE = "en"
 
+# tag: URI (RFC 4151) authority/date for entry ids. Gives a stable,
+# URL-independent guid instead of the post URL, which has already moved once
+# (claude.ai/blog -> claude.com/blog) and could again.
+TAG_AUTHORITY = "claude.com"
+TAG_DATE = "2026"
+
 # Override via FEED_URL env var (set to your GitHub Pages URL once known)
 _DEFAULT_FEED_URL = "https://tim-hilde.github.io/anthropic-rss/rss.xml"
+
+
+def _entry_id(slug: str) -> str:
+    return f"tag:{TAG_AUTHORITY},{TAG_DATE}:{slug}"
 
 
 def render(posts: list[dict], feed_url: str | None = None) -> str:
@@ -25,8 +35,11 @@ def render(posts: list[dict], feed_url: str | None = None) -> str:
     fg.id(feed_url)
     fg.title(FEED_TITLE)
     fg.description(FEED_DESCRIPTION)
-    fg.link(href=FEED_LINK, rel="alternate")
+    # feedgen's RSS <link> takes whichever link() call happens last, so the
+    # self-referencing atom:link must be added first and the human-facing
+    # alternate link (what RSS readers show as "visit site") added last.
     fg.link(href=feed_url, rel="self")
+    fg.link(href=FEED_LINK, rel="alternate")
     fg.language(FEED_LANGUAGE)
 
     # feedgen.add_entry() prepends, so iterate oldest-first to get newest-first output
@@ -38,7 +51,10 @@ def render(posts: list[dict], feed_url: str | None = None) -> str:
 
     for post in sorted_posts:
         fe = fg.add_entry()
-        fe.id(post["url"])
+        # A tag: URI is a stable, URL-independent guid: posts.json is already
+        # keyed by slug, and this survives a future domain move the way a
+        # URL-based guid wouldn't.
+        fe.id(_entry_id(post["slug"]))
         fe.title(post["title"] or post["slug"])
         fe.link(href=post["url"])
 
