@@ -13,7 +13,7 @@ from bs4 import BeautifulSoup
 BASE_URL = "https://claude.com/blog"
 PAGINATION_PARAM = "d7430fcd_page"
 REQUEST_DELAY = 1.0
-USER_AGENT = "claude-blog-rss/1.0 (+https://github.com/tim-hilde/anthropic-rss)"
+USER_AGENT = "claude-blog-rss/1.0 (+https://github.com/dave-atx/anthropic-rss)"
 
 logger = logging.getLogger(__name__)
 

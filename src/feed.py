@@ -20,7 +20,7 @@ FEED_IMAGE_URL = (
 )
 
 # Override via FEED_URL env var (set to your GitHub Pages URL once known)
-_DEFAULT_FEED_URL = "https://tim-hilde.github.io/anthropic-rss/rss.xml"
+_DEFAULT_FEED_URL = "https://dave-atx.github.io/anthropic-rss/rss.xml"
 
 
 def render(posts: list[dict], feed_url: str | None = None) -> str:

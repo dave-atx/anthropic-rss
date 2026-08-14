@@ -5,7 +5,7 @@ Unofficial daily-updated RSS feed for [claude.com/blog](https://claude.com/blog)
 ## Subscribe
 
 ```
-https://tim-hilde.github.io/anthropic-rss/rss.xml
+https://dave-atx.github.io/anthropic-rss/rss.xml
 ```
 
 Add this URL to your feed reader (Feedly, NetNewsWire, Miniflux, …).
