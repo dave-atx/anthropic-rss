@@ -2,7 +2,7 @@
 
 import xml.etree.ElementTree as ET
 
-from src.feed import FEED_LINK, render
+from src.feed import FEED_LINK, render, render_atom
 
 NS = {
     "atom": "http://www.w3.org/2005/Atom",
@@ -115,12 +115,12 @@ def test_channel_has_image():
 
 # ── entry-level richness ─────────────────────────────────────────────────────
 
-def test_entry_guid_is_slug_not_url():
+def test_entry_guid_is_tag_uri_not_url():
     posts = _make_posts(1)
     xml_str = render(posts)
     root = ET.fromstring(xml_str)
     guid = root.find("channel/item/guid")
-    assert guid.text == "post-0"
+    assert guid.text == "tag:claude.com,2026:post-0"
     assert guid.attrib["isPermaLink"] == "false"
 
 
@@ -174,3 +174,56 @@ def test_entry_without_image_has_no_media_group():
     xml_str = render(_make_posts(1))
     root = ET.fromstring(xml_str)
     assert root.find("channel/item/media:group", NS) is None
+
+
+# ── Atom 1.0 ─────────────────────────────────────────────────────────────────
+
+def test_atom_feed_is_valid_xml_with_atom_namespace():
+    xml_str = render_atom(_make_posts(3))
+    root = ET.fromstring(xml_str)
+    assert root.tag == "{http://www.w3.org/2005/Atom}feed"
+
+
+def test_atom_self_and_alternate_links():
+    xml_str = render_atom(_make_posts(1), feed_url="https://example.github.io/atom.xml")
+    root = ET.fromstring(xml_str)
+    links = {l.attrib.get("rel"): l.attrib["href"] for l in root.findall("atom:link", NS)}
+    assert links["self"] == "https://example.github.io/atom.xml"
+    assert links["alternate"] == FEED_LINK
+
+
+def test_atom_entry_id_is_same_tag_uri_as_rss_guid():
+    posts = _make_posts(1)
+    rss_root = ET.fromstring(render(posts))
+    atom_root = ET.fromstring(render_atom(posts))
+    rss_guid = rss_root.find("channel/item/guid").text
+    atom_id = atom_root.find("atom:entry/atom:id", NS).text
+    assert rss_guid == atom_id == "tag:claude.com,2026:post-0"
+
+
+def test_atom_entry_has_summary_and_content_when_summary_present():
+    posts = _make_posts(1)
+    posts[0]["summary"] = "A short teaser."
+    root = ET.fromstring(render_atom(posts))
+    entry = root.find("atom:entry", NS)
+    assert entry.find("atom:summary", NS).text == "A short teaser."
+    content = entry.find("atom:content", NS)
+    assert content is not None
+    assert "Content of post 0" in content.text
+
+
+def test_atom_entry_authors_and_thumbnail():
+    posts = _make_posts(1)
+    posts[0]["authors"] = ["Jane Doe"]
+    posts[0]["image_url"] = "https://example.com/img.jpg"
+    root = ET.fromstring(render_atom(posts))
+    entry = root.find("atom:entry", NS)
+    assert entry.find("dc:creator", NS).text == "Jane Doe"
+    thumb = entry.find("media:group/media:thumbnail", NS)
+    assert thumb.attrib["url"] == "https://example.com/img.jpg"
+
+
+def test_atom_channel_has_logo_and_rights():
+    root = ET.fromstring(render_atom(_make_posts(1)))
+    assert root.find("atom:logo", NS).text.startswith("https://")
+    assert root.find("atom:rights", NS).text
