@@ -5,13 +5,18 @@ from datetime import datetime, timezone
 
 from feedgen.feed import FeedGenerator
 
-FEED_TITLE = "Claude Blog (unofficial RSS)"
+FEED_TITLE = "Claude Blog (unofficial)"
 FEED_DESCRIPTION = (
-    "Unofficial RSS feed for https://claude.com/blog. "
+    "Unofficial feed for https://claude.com/blog. "
     "Daily-updated mirror. Content © Anthropic."
 )
 FEED_LINK = "https://claude.com/blog"
 FEED_LANGUAGE = "en"
+# Atom 1.0 requires atom:author at feed or entry level (RFC 4287 §4.1.1); most
+# posts have no byline, so this feed-level fallback covers those. Harmless
+# for RSS: FeedGenerator.author() only touches rss:channel/author when an
+# email is supplied, which this isn't.
+FEED_AUTHOR = "Anthropic"
 FEED_COPYRIGHT = "Content © Anthropic. Unofficial, unaffiliated feed."
 # Largest favicon-family asset claude.com serves (256x256 apple-touch-icon).
 FEED_IMAGE_URL = (
@@ -44,6 +49,7 @@ def _build_feed_generator(posts: list[dict], feed_url: str) -> FeedGenerator:
     fg.title(FEED_TITLE)
     fg.description(FEED_DESCRIPTION)
     fg.copyright(FEED_COPYRIGHT)
+    fg.author({"name": FEED_AUTHOR})
     # feedgen's RSS <link> takes whichever link() call happens last, so the
     # self-referencing atom:link must be added first and the human-facing
     # alternate link (what RSS readers show as "visit site") added last.
@@ -84,7 +90,11 @@ def _build_feed_generator(posts: list[dict], feed_url: str) -> FeedGenerator:
                 fe.category({"term": cat})
 
         if post.get("authors"):
+            # dc:creator is what RSS readers show; atom:author (name-only,
+            # no email) is silently dropped from RSS but populates the
+            # per-entry author Atom readers look for.
             fe.dc.dc_creator(post["authors"])
+            fe.author([{"name": a} for a in post["authors"]])
 
         if post.get("image_url"):
             fe.media.thumbnail(url=post["image_url"])
