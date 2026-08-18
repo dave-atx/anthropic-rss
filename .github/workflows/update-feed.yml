@@ -2,7 +2,8 @@ name: Update RSS feed
 
 on:
   schedule:
-    - cron: "0 6 * * *"   # daily at 06:00 UTC
+    - cron: "0 14 * * *"   # ~7am Pacific (UTC offset drifts 1hr across DST)
+    - cron: "0 1 * * *"    # ~6pm Pacific (UTC offset drifts 1hr across DST)
   workflow_dispatch:        # allow manual trigger
 
 permissions:

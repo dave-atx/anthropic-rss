@@ -6,3 +6,8 @@ __pycache__/
 dist/
 *.egg-info/
 .DS_Store
+
+# generated at deploy time by the update-feed workflow; not the source of
+# truth for what's served (Pages deploys straight from the build artifact)
+docs/rss.xml
+docs/atom.xml
