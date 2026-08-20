@@ -82,6 +82,7 @@ def test_feed_empty_posts():
 
 # ── channel-level richness ──────────────────────────────────────────────────
 
+
 def test_channel_link_is_blog_not_feed_url():
     """Regression test: feedgen's link() uses the *last* call for RSS <link>,
     so the alternate (blog) link must survive being added after the self link."""
@@ -116,6 +117,7 @@ def test_channel_has_image():
 
 
 # ── entry-level richness ─────────────────────────────────────────────────────
+
 
 def test_entry_guid_is_tag_uri_not_url():
     posts = _make_posts(1)
@@ -180,6 +182,7 @@ def test_entry_without_image_has_no_media_group():
 
 # ── Atom 1.0 ─────────────────────────────────────────────────────────────────
 
+
 def test_atom_feed_is_valid_xml_with_atom_namespace():
     xml_str = render_atom(_make_posts(3))
     root = ET.fromstring(xml_str)
@@ -189,7 +192,7 @@ def test_atom_feed_is_valid_xml_with_atom_namespace():
 def test_atom_self_and_alternate_links():
     xml_str = render_atom(_make_posts(1), feed_url="https://example.github.io/atom.xml")
     root = ET.fromstring(xml_str)
-    links = {l.attrib.get("rel"): l.attrib["href"] for l in root.findall("atom:link", NS)}
+    links = {link.attrib.get("rel"): link.attrib["href"] for link in root.findall("atom:link", NS)}
     assert links["self"] == "https://example.github.io/atom.xml"
     assert links["alternate"] == FEED_LINK
 
@@ -257,6 +260,7 @@ def test_rss_entry_author_unaffected_by_name_only_atom_author():
 
 
 # ── feedparser round-trip (structural validity, not just well-formedness) ────
+
 
 def _feedparser_posts():
     posts = _make_posts(2)

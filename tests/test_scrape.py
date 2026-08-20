@@ -1,5 +1,6 @@
 """Tests for scrape.py using local HTML fixtures (no network)."""
 
+import re
 from pathlib import Path
 
 import pytest
@@ -35,33 +36,33 @@ def post_with_author_html() -> str:
 
 # ── listing page ──────────────────────────────────────────────────────────────
 
+
 def test_listing_finds_slugs():
     """At least 10 unique slugs on the listing page."""
-    import re
     html = listing_html()
     soup = BeautifulSoup(html, "lxml")
     links = soup.find_all(
         "a",
         attrs={"data-cta": "Blog page", "href": re.compile(r"^/blog/[^/]+$")},
     )
-    seen = {l["href"][len("/blog/"):] for l in links}
+    seen = {link["href"][len("/blog/") :] for link in links}
     assert len(seen) >= 10, f"Expected >=10 slugs, got {len(seen)}"
 
 
 def test_listing_unique_slugs_at_least_10():
     """Listing page has at least 10 *unique* slugs (marquee+grid may repeat the same slug)."""
-    import re
     html = listing_html()
     soup = BeautifulSoup(html, "lxml")
     links = soup.find_all(
         "a",
         attrs={"data-cta": "Blog page", "href": re.compile(r"^/blog/[^/]+$")},
     )
-    unique = {l["href"][len("/blog/"):] for l in links}
+    unique = {link["href"][len("/blog/") :] for link in links}
     assert len(unique) >= 10, f"Expected >=10 unique slugs, got {len(unique)}"
 
 
 # ── post detail page ──────────────────────────────────────────────────────────
+
 
 def test_post_extracts_title():
     soup = BeautifulSoup(post_html(), "lxml")
@@ -116,6 +117,7 @@ def test_post_extracts_body_html_across_multiple_wraps():
 
 # ── authors ──────────────────────────────────────────────────────────────────
 
+
 def test_post_without_author_returns_empty_list():
     soup = BeautifulSoup(post_html(), "lxml")
     assert _extract_detail_list(soup, "Author(s)") == []
@@ -129,6 +131,7 @@ def test_post_with_author_extracts_names():
 
 # ── JSON-LD summary ──────────────────────────────────────────────────────────
 
+
 def test_extract_summary_unescapes_html_entities():
     soup = BeautifulSoup(post_html(), "lxml")
     summary = _extract_summary(_extract_json_ld(soup))
@@ -141,6 +144,7 @@ def test_extract_summary_missing_json_ld_returns_empty():
 
 
 # ── per-post image ───────────────────────────────────────────────────────────
+
 
 def test_post_without_custom_image_falls_back_to_generic():
     """No per-post og:image card → last non-empty og:image is the site's
@@ -160,11 +164,15 @@ def test_post_with_custom_image_uses_per_post_card():
 
 # ── date parser ───────────────────────────────────────────────────────────────
 
-@pytest.mark.parametrize("date_str,year", [
-    ("April 14, 2026", 2026),
-    ("Apr 20, 2026", 2026),
-    ("January 1, 2024", 2024),
-])
+
+@pytest.mark.parametrize(
+    "date_str,year",
+    [
+        ("April 14, 2026", 2026),
+        ("Apr 20, 2026", 2026),
+        ("January 1, 2024", 2024),
+    ],
+)
 def test_parse_date_formats(date_str, year):
     dt = _parse_date(date_str)
     assert dt is not None
@@ -177,6 +185,7 @@ def test_parse_date_invalid():
 
 
 # ── sitemap ──────────────────────────────────────────────────────────────────
+
 
 def sitemap_xml() -> bytes:
     return (FIXTURES / "sitemap.xml").read_bytes()
