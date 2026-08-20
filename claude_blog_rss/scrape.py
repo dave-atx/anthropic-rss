@@ -265,3 +265,19 @@ def scrape_all_pages(max_pages: int = 20, delay: float = REQUEST_DELAY) -> list[
         if page < max_pages:
             time.sleep(delay)
     return list(all_slugs.items())
+
+
+def fetch_text(url: str, timeout: int = 30) -> str | None:
+    """Fetch a URL as text, returning None on any failure.
+
+    Used to recover published state from GitHub Pages when the Actions cache
+    misses. A failure here is recoverable (the caller falls back to a
+    re-scrape), so unlike a listing-page failure it must not crash the run.
+    """
+    try:
+        resp = get_session().get(url, timeout=timeout)
+        resp.raise_for_status()
+    except requests.RequestException as exc:
+        logger.warning("Could not fetch %s: %s", url, exc)
+        return None
+    return resp.text

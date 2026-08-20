@@ -1,16 +1,24 @@
 """Tests for feed.py."""
 
+import time
 import xml.etree.ElementTree as ET
+from datetime import datetime
 
 import feedparser
 
-from claude_blog_rss.feed import FEED_LINK, render, render_atom
+from claude_blog_rss.feed import (
+    EPOCH,
+    FEED_LINK,
+    atom_archive_url,
+    atom_url,
+    render_atom,
+)
 
 NS = {
     "atom": "http://www.w3.org/2005/Atom",
-    "content": "http://purl.org/rss/1.0/modules/content/",
     "dc": "http://purl.org/dc/elements/1.1/",
     "media": "http://search.yahoo.com/mrss/",
+    "fh": "http://purl.org/syndication/history/1.0",
 }
 
 
@@ -32,154 +40,6 @@ def _make_posts(n: int) -> list[dict]:
     ]
 
 
-def test_feed_is_valid_xml():
-    xml_str = render(_make_posts(3))
-    root = ET.fromstring(xml_str)
-    assert root.tag == "rss"
-
-
-def test_feed_version():
-    xml_str = render(_make_posts(1))
-    root = ET.fromstring(xml_str)
-    assert root.attrib.get("version") == "2.0"
-
-
-def test_feed_item_count_capped_at_20():
-    posts = _make_posts(30)
-    xml_str = render(posts[:20])
-    root = ET.fromstring(xml_str)
-    channel = root.find("channel")
-    items = channel.findall("item")
-    assert len(items) == 20
-
-
-def test_feed_item_has_required_fields():
-    xml_str = render(_make_posts(1))
-    root = ET.fromstring(xml_str)
-    item = root.find("channel/item")
-    assert item.find("title").text == "Post 0"
-    assert item.find("link").text is not None
-    assert item.find("guid").text is not None
-
-
-def test_feed_sorted_newest_first():
-    posts = _make_posts(5)
-    xml_str = render(posts)
-    root = ET.fromstring(xml_str)
-    channel = root.find("channel")
-    items = channel.findall("item")
-    titles = [item.find("title").text for item in items]
-    # Post 4 (Jan 5) should come before Post 0 (Jan 1)
-    assert titles.index("Post 4") < titles.index("Post 0")
-
-
-def test_feed_empty_posts():
-    xml_str = render([])
-    root = ET.fromstring(xml_str)
-    channel = root.find("channel")
-    assert len(channel.findall("item")) == 0
-
-
-# ── channel-level richness ──────────────────────────────────────────────────
-
-
-def test_channel_link_is_blog_not_feed_url():
-    """Regression test: feedgen's link() uses the *last* call for RSS <link>,
-    so the alternate (blog) link must survive being added after the self link."""
-    xml_str = render(_make_posts(1), feed_url="https://example.github.io/rss.xml")
-    root = ET.fromstring(xml_str)
-    channel = root.find("channel")
-    assert channel.find("link").text == FEED_LINK
-
-
-def test_channel_self_link_is_feed_url():
-    xml_str = render(_make_posts(1), feed_url="https://example.github.io/rss.xml")
-    root = ET.fromstring(xml_str)
-    channel = root.find("channel")
-    self_link = channel.find("atom:link", NS)
-    assert self_link.attrib["href"] == "https://example.github.io/rss.xml"
-    assert self_link.attrib["rel"] == "self"
-
-
-def test_channel_has_copyright():
-    xml_str = render(_make_posts(1))
-    root = ET.fromstring(xml_str)
-    assert root.find("channel/copyright").text
-
-
-def test_channel_has_image():
-    xml_str = render(_make_posts(1))
-    root = ET.fromstring(xml_str)
-    image = root.find("channel/image")
-    assert image is not None
-    assert image.find("url").text.startswith("https://")
-    assert image.find("link").text == FEED_LINK
-
-
-# ── entry-level richness ─────────────────────────────────────────────────────
-
-
-def test_entry_guid_is_tag_uri_not_url():
-    posts = _make_posts(1)
-    xml_str = render(posts)
-    root = ET.fromstring(xml_str)
-    guid = root.find("channel/item/guid")
-    assert guid.text == "tag:claude.com,2026:post-0"
-    assert guid.attrib["isPermaLink"] == "false"
-
-
-def test_entry_description_and_content_both_present_with_summary():
-    posts = _make_posts(1)
-    posts[0]["summary"] = "A short teaser."
-    xml_str = render(posts)
-    root = ET.fromstring(xml_str)
-    item = root.find("channel/item")
-    assert item.find("description").text == "A short teaser."
-    content = item.find("content:encoded", NS)
-    assert content is not None
-    assert "Content of post 0" in content.text
-
-
-def test_entry_without_summary_falls_back_to_description_only():
-    posts = _make_posts(1)
-    xml_str = render(posts)
-    root = ET.fromstring(xml_str)
-    item = root.find("channel/item")
-    assert "Content of post 0" in item.find("description").text
-    assert item.find("content:encoded", NS) is None
-
-
-def test_entry_authors_become_dc_creator():
-    posts = _make_posts(1)
-    posts[0]["authors"] = ["Jane Doe", "John Smith"]
-    xml_str = render(posts)
-    root = ET.fromstring(xml_str)
-    creators = root.findall("channel/item/dc:creator", NS)
-    assert [c.text for c in creators] == ["Jane Doe", "John Smith"]
-
-
-def test_entry_without_authors_has_no_dc_creator():
-    xml_str = render(_make_posts(1))
-    root = ET.fromstring(xml_str)
-    assert root.find("channel/item/dc:creator", NS) is None
-
-
-def test_entry_image_becomes_media_thumbnail():
-    posts = _make_posts(1)
-    posts[0]["image_url"] = "https://example.com/img.jpg"
-    xml_str = render(posts)
-    root = ET.fromstring(xml_str)
-    thumb = root.find("channel/item/media:group/media:thumbnail", NS)
-    assert thumb is not None
-    assert thumb.attrib["url"] == "https://example.com/img.jpg"
-
-
-def test_entry_without_image_has_no_media_group():
-    xml_str = render(_make_posts(1))
-    root = ET.fromstring(xml_str)
-    assert root.find("channel/item/media:group", NS) is None
-
-
 # ── Atom 1.0 ─────────────────────────────────────────────────────────────────
 
 
@@ -189,21 +49,20 @@ def test_atom_feed_is_valid_xml_with_atom_namespace():
     assert root.tag == "{http://www.w3.org/2005/Atom}feed"
 
 
-def test_atom_self_and_alternate_links():
-    xml_str = render_atom(_make_posts(1), feed_url="https://example.github.io/atom.xml")
+def test_atom_self_url_honoured_in_id_and_self_link():
+    xml_str = render_atom(_make_posts(1), self_url="https://example.github.io/atom.xml")
     root = ET.fromstring(xml_str)
+    assert root.find("atom:id", NS).text == "https://example.github.io/atom.xml"
     links = {link.attrib.get("rel"): link.attrib["href"] for link in root.findall("atom:link", NS)}
     assert links["self"] == "https://example.github.io/atom.xml"
     assert links["alternate"] == FEED_LINK
 
 
-def test_atom_entry_id_is_same_tag_uri_as_rss_guid():
+def test_atom_entry_id_is_tag_uri():
     posts = _make_posts(1)
-    rss_root = ET.fromstring(render(posts))
     atom_root = ET.fromstring(render_atom(posts))
-    rss_guid = rss_root.find("channel/item/guid").text
     atom_id = atom_root.find("atom:entry/atom:id", NS).text
-    assert rss_guid == atom_id == "tag:claude.com,2026:post-0"
+    assert atom_id == "tag:claude.com,2026:post-0"
 
 
 def test_atom_entry_has_summary_and_content_when_summary_present():
@@ -250,13 +109,82 @@ def test_atom_entry_with_authors_has_own_author_element():
     assert names == ["Jane Doe", "John Smith"]
 
 
-def test_rss_entry_author_unaffected_by_name_only_atom_author():
-    """FeedEntry.author() only touches rss:author when an email is given, so
-    name-only authors must not leak an empty/malformed <author> into RSS."""
+# ── RFC 5005 (feed paging and archiving) ──────────────────────────────────────
+
+
+def test_subscription_document_has_no_fh_archive():
+    root = ET.fromstring(render_atom(_make_posts(1)))
+    assert root.find("fh:archive", NS) is None
+
+
+def test_archive_document_has_exactly_one_fh_archive():
+    root = ET.fromstring(render_atom(_make_posts(1), archive=True))
+    archives = root.findall("fh:archive", NS)
+    assert len(archives) == 1
+
+
+def test_current_prev_next_archive_links_present_when_supplied():
+    xml_str = render_atom(
+        _make_posts(1),
+        current_url="https://example.github.io/atom.xml",
+        prev_archive_url="https://example.github.io/archive-2025.xml",
+        next_archive_url="https://example.github.io/archive-2027.xml",
+    )
+    root = ET.fromstring(xml_str)
+    links = {link.attrib.get("rel"): link.attrib["href"] for link in root.findall("atom:link", NS)}
+    assert links["current"] == "https://example.github.io/atom.xml"
+    assert links["prev-archive"] == "https://example.github.io/archive-2025.xml"
+    assert links["next-archive"] == "https://example.github.io/archive-2027.xml"
+
+
+def test_current_prev_next_archive_links_absent_when_not_supplied():
+    root = ET.fromstring(render_atom(_make_posts(1)))
+    rels = {link.attrib.get("rel") for link in root.findall("atom:link", NS)}
+    assert "current" not in rels
+    assert "prev-archive" not in rels
+    assert "next-archive" not in rels
+
+
+def test_feed_base_url_env_override(monkeypatch):
+    monkeypatch.setenv("FEED_BASE_URL", "https://example.org/feeds")
+    assert atom_url() == "https://example.org/feeds/atom.xml"
+    assert atom_archive_url(2025) == "https://example.org/feeds/archive-2025.xml"
+    assert atom_archive_url("2025") == "https://example.org/feeds/archive-2025.xml"
+
+
+# ── deterministic timestamps ──────────────────────────────────────────────────
+
+
+def test_feed_updated_equals_newest_post_pub_date():
+    posts = _make_posts(3)
+    root = ET.fromstring(render_atom(posts))
+    updated = root.find("atom:updated", NS).text
+    newest = max(p["pub_date"] for p in posts)
+    assert datetime.fromisoformat(updated) == datetime.fromisoformat(newest)
+
+
+def test_feed_updated_is_epoch_for_empty_feed():
+    root = ET.fromstring(render_atom([]))
+    updated = root.find("atom:updated", NS).text
+    assert datetime.fromisoformat(updated) == EPOCH
+
+
+def test_entry_without_pub_date_gets_epoch_not_now():
     posts = _make_posts(1)
-    posts[0]["authors"] = ["Jane Doe"]
-    root = ET.fromstring(render(posts))
-    assert root.find("channel/item/author") is None
+    posts[0]["pub_date"] = ""
+    root = ET.fromstring(render_atom(posts))
+    entry = root.find("atom:entry", NS)
+    updated = entry.find("atom:updated", NS).text
+    assert datetime.fromisoformat(updated) == EPOCH
+    assert entry.find("atom:published", NS) is None
+
+
+def test_render_atom_is_byte_identical_across_renders_over_time():
+    posts = _make_posts(3)
+    first = render_atom(posts)
+    time.sleep(1.1)
+    second = render_atom(posts)
+    assert first == second
 
 
 # ── feedparser round-trip (structural validity, not just well-formedness) ────
@@ -269,12 +197,6 @@ def _feedparser_posts():
     posts[0]["summary"] = "A short teaser."
     posts[1]["categories"] = ["Product", "Claude Code"]
     return posts
-
-
-def test_feedparser_parses_rss_without_errors():
-    parsed = feedparser.parse(render(_feedparser_posts()))
-    assert not parsed.bozo, getattr(parsed, "bozo_exception", None)
-    assert len(parsed.entries) == 2
 
 
 def test_feedparser_parses_atom_without_errors():
@@ -290,3 +212,9 @@ def test_feedparser_atom_round_trips_author_and_summary():
     assert by_title["Post 0"].get("author") == "Jane Doe"
     assert by_title["Post 0"].get("summary") == "A short teaser."
     assert by_title["Post 1"].get("author") is None
+
+
+def test_feedparser_parses_archive_document_without_errors():
+    parsed = feedparser.parse(render_atom(_feedparser_posts(), archive=True))
+    assert not parsed.bozo, getattr(parsed, "bozo_exception", None)
+    assert len(parsed.entries) == 2

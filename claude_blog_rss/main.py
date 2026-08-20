@@ -1,4 +1,4 @@
-"""Orchestrate: load state → diff → scrape new → save → render feed."""
+"""Orchestrate: load state → diff → scrape new → save → render feeds."""
 
 import argparse
 import json
@@ -7,12 +7,15 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 
-from .feed import render, render_atom
+from .archives import partition
+from .feed import atom_archive_url, atom_url, render_atom
+from .jsonfeed import jsonfeed_archive_url, jsonfeed_url, parse_jsonfeed, render_jsonfeed
 from .models import Post
 from .scrape import (
     REQUEST_DELAY,
     fetch_post,
     fetch_sitemap_lastmods,
+    fetch_text,
     list_slugs,
     scrape_all_pages,
 )
@@ -21,36 +24,115 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 logger = logging.getLogger(__name__)
 
 ROOT = Path(__file__).parent.parent
-POSTS_PATH = ROOT / "data" / "posts.json"
-FEED_PATH = ROOT / "docs" / "rss.xml"
-ATOM_FEED_PATH = ROOT / "docs" / "atom.xml"
+DOCS_PATH = ROOT / "docs"
+CURRENT_JSON_PATH = DOCS_PATH / "feed.json"
+ATOM_PATH = DOCS_PATH / "atom.xml"
+
+# Pre-JSON-Feed state file. Kept only as a last-resort seed so the first run
+# after the migration doesn't start from nothing; delete it once Pages has
+# published feed.json at least once.
+LEGACY_POSTS_PATH = ROOT / "data" / "posts.json"
 
 DAILY_PAGES = 2
 
 
 def load_state() -> dict[str, Post]:
-    if POSTS_PATH.exists():
-        return json.loads(POSTS_PATH.read_text())
+    """Rebuild the corpus from the published JSON Feed documents.
+
+    Closed years are committed, so they always come from the working tree.
+    The current year is rebuilt every run and therefore isn't committed; it is
+    recovered from, in order: the local file (restored by actions/cache), the
+    copy deployed to Pages, or the legacy posts.json seed. All three can miss
+    on a first run, in which case the scrape refills it.
+    """
+    posts: dict[str, Post] = {}
+
+    for path in sorted(DOCS_PATH.glob("archive-*.json")):
+        archived = parse_jsonfeed(path.read_text())
+        logger.info("Loaded %d post(s) from %s", len(archived), path.name)
+        posts.update(archived)
+
+    posts.update(_load_current_year())
+    return posts
+
+
+def _load_current_year() -> dict[str, Post]:
+    if CURRENT_JSON_PATH.exists():
+        current = parse_jsonfeed(CURRENT_JSON_PATH.read_text())
+        logger.info("Loaded %d current-year post(s) from %s", len(current), CURRENT_JSON_PATH.name)
+        return current
+
+    url = jsonfeed_url()
+    logger.info("No local %s; trying the deployed copy at %s", CURRENT_JSON_PATH.name, url)
+    text = fetch_text(url)
+    if text:
+        try:
+            current = parse_jsonfeed(text)
+        except json.JSONDecodeError, KeyError, TypeError:
+            logger.warning("Deployed %s could not be parsed; ignoring it", CURRENT_JSON_PATH.name)
+        else:
+            logger.info("Recovered %d current-year post(s) from Pages", len(current))
+            return current
+
+    if LEGACY_POSTS_PATH.exists():
+        legacy = json.loads(LEGACY_POSTS_PATH.read_text())
+        logger.warning("Falling back to legacy seed %s (%d posts)", LEGACY_POSTS_PATH, len(legacy))
+        return legacy
+
+    logger.warning("No current-year state recovered; it will be re-scraped")
     return {}
 
 
-def save_state(posts: dict[str, Post]) -> None:
-    POSTS_PATH.parent.mkdir(parents=True, exist_ok=True)
-    POSTS_PATH.write_text(json.dumps(posts, indent=2, ensure_ascii=False) + "\n")
+def save_documents(posts: dict[str, Post]) -> None:
+    """Write every published document: JSON state plus RFC 5005 Atom feeds."""
+    part = partition(posts)
+    DOCS_PATH.mkdir(parents=True, exist_ok=True)
 
+    CURRENT_JSON_PATH.write_text(render_jsonfeed(part.current, feed_url=jsonfeed_url()))
+    logger.info("Wrote %s (%d items)", CURRENT_JSON_PATH.name, len(part.current))
 
-def save_feed(posts: dict[str, Post], feed_count: int = 20) -> None:
-    FEED_PATH.parent.mkdir(parents=True, exist_ok=True)
-    post_list = list(posts.values())
-    feed_posts = sorted(post_list, key=lambda p: p.get("pub_date") or "", reverse=True)[:feed_count]
+    for year in part.archive_years:
+        path = DOCS_PATH / f"archive-{year}.json"
+        rendered = render_jsonfeed(part.archives[year], feed_url=jsonfeed_archive_url(year))
+        # Closed years are committed, and CI never commits. If one changes here
+        # -- which normally means a --backfill turned up a post nobody had seen
+        # -- the new file deploys but the next checkout silently reverts it, so
+        # say so loudly rather than losing the post on the following run.
+        if path.exists() and path.read_text() != rendered:
+            logger.warning(
+                "%s changed. Closed-year archives are committed state: commit this file, "
+                "or the change is lost at the next checkout.",
+                path.name,
+            )
+        path.write_text(rendered)
+        logger.info("Wrote %s (%d items)", path.name, len(part.archives[year]))
 
-    with FEED_PATH.open("w") as f:
-        f.write(render(feed_posts))
-    logger.info("RSS feed written: %s (%d items)", FEED_PATH, len(feed_posts))
+    years = part.archive_years  # oldest first
+    ATOM_PATH.write_text(
+        render_atom(
+            part.subscription,
+            self_url=atom_url(),
+            prev_archive_url=atom_archive_url(years[-1]) if years else None,
+        )
+    )
+    logger.info("Wrote %s (%d entries)", ATOM_PATH.name, len(part.subscription))
 
-    with ATOM_FEED_PATH.open("w") as f:
-        f.write(render_atom(feed_posts))
-    logger.info("Atom feed written: %s (%d items)", ATOM_FEED_PATH, len(feed_posts))
+    for i, year in enumerate(years):
+        path = DOCS_PATH / f"archive-{year}.xml"
+        path.write_text(
+            render_atom(
+                part.archives[year],
+                self_url=atom_archive_url(year),
+                archive=True,
+                current_url=atom_url(),
+                prev_archive_url=atom_archive_url(years[i - 1]) if i else None,
+                # The newest archive has no next-archive: the document that
+                # follows it is the subscription feed, which is not an archive.
+                # rel="current" already points there from every archive.
+                next_archive_url=atom_archive_url(years[i + 1]) if i + 1 < len(years) else None,
+            )
+        )
+        logger.info("Wrote %s (%d entries)", path.name, len(part.archives[year]))
 
 
 def _parse_stored_date(pub_date: str | None) -> datetime | None:
@@ -119,7 +201,7 @@ def fetch_new_posts(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Update claude.com/blog RSS feed")
+    parser = argparse.ArgumentParser(description="Update the claude.com/blog feeds")
     parser.add_argument(
         "--backfill", action="store_true", help="Fetch all listing pages (initial run)"
     )
@@ -128,9 +210,6 @@ def main() -> None:
         action="store_true",
         help="Re-fetch every already-known post too, overwriting its stored data "
         "(use after a scraper change to backfill new fields onto old posts)",
-    )
-    parser.add_argument(
-        "--feed-count", type=int, default=20, help="Number of items in the feed (default: 20)"
     )
     args = parser.parse_args()
 
@@ -167,11 +246,11 @@ def main() -> None:
     if enriched:
         logger.info("Enriched %d post(s) with precise publish times from sitemap", enriched)
 
-    if new_slugs or enriched:
-        save_state(posts)
-        logger.info("State saved: %d total posts", len(posts))
-
-    save_feed(posts, feed_count=args.feed_count)
+    # Documents are written unconditionally: they are both the published feeds
+    # and the persisted state, so a run that found nothing new still has to
+    # reproduce them (the working tree may have started empty).
+    save_documents(posts)
+    logger.info("Saved %d total posts", len(posts))
 
 
 if __name__ == "__main__":
