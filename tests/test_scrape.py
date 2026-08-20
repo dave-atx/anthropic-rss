@@ -6,6 +6,7 @@ import pytest
 from bs4 import BeautifulSoup
 
 from src.scrape import (
+    _extract_body_html,
     _extract_detail,
     _extract_detail_list,
     _extract_image,
@@ -86,10 +87,31 @@ def test_post_extracts_categories():
 
 def test_post_extracts_body_html():
     soup = BeautifulSoup(post_html(), "lxml")
-    body_div = soup.find("div", class_="blog_post_content_wrap")
-    assert body_div is not None, "blog_post_content_wrap not found"
-    text = body_div.get_text()
-    assert len(text) > 200, "Article body seems too short"
+    html_body = _extract_body_html(soup)
+    assert len(html_body) > 200, "Article body seems too short"
+
+
+def test_post_extracts_body_html_across_multiple_wraps():
+    """Long posts render the article body as multiple sibling
+    blog_post_content_wrap divs (Webflow splits the rich-text CMS field
+    around embedded components like testimonials). Both must be captured,
+    in document order, or the article is silently truncated."""
+    html = """
+    <div class="blog_post_content_wrap">
+      <div class="u-rich-text-blog"><p>first half</p></div>
+    </div>
+    <div class="blog_post_content_wrap">
+      <div class="w-condition-invisible">
+        <div class="u-rich-text-blog"></div>
+      </div>
+      <div class="u-rich-text-blog"><p>second half</p></div>
+    </div>
+    """
+    soup = BeautifulSoup(html, "lxml")
+    html_body = _extract_body_html(soup)
+    assert "first half" in html_body
+    assert "second half" in html_body
+    assert html_body.index("first half") < html_body.index("second half")
 
 
 # ── authors ──────────────────────────────────────────────────────────────────

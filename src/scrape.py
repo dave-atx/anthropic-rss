@@ -97,12 +97,7 @@ def fetch_post(slug: str) -> dict | None:
     summary = _extract_summary(json_ld)
     image_url = _extract_image(soup, json_ld)
 
-    body_div = soup.find("div", class_="blog_post_content_wrap")
-    if body_div:
-        rich = body_div.find("div", class_=re.compile(r"\bu-rich-text-blog\b"))
-        html_body = str(rich) if rich else str(body_div)
-    else:
-        html_body = ""
+    html_body = _extract_body_html(soup)
 
     return {
         "slug": slug,
@@ -116,6 +111,33 @@ def fetch_post(slug: str) -> dict | None:
         "image_url": image_url,
         "html_body": html_body,
     }
+
+
+def _extract_body_html(soup: BeautifulSoup) -> str:
+    """Concatenate a post's article body.
+
+    Long posts render as *multiple* sibling `blog_post_content_wrap` divs
+    (Webflow splits the rich-text CMS field around embedded components like
+    testimonials/quotes), so grabbing only the first one silently truncates
+    the article. Skip rich-text divs inside a `w-condition-invisible`
+    wrapper (Webflow-hidden components, e.g. an unused testimonial slot)
+    rather than just skipping empty ones, so a post where that condition
+    *is* satisfied doesn't get testimonial text spliced into its body.
+    """
+    parts = []
+    for wrap in soup.find_all("div", class_="blog_post_content_wrap"):
+        rich_divs = [
+            rich
+            for rich in wrap.find_all(
+                "div", class_=re.compile(r"\bu-rich-text-blog\b")
+            )
+            if not rich.find_parent(class_=re.compile(r"\bw-condition-invisible\b"))
+        ]
+        if rich_divs:
+            parts.extend(str(rich) for rich in rich_divs)
+        else:
+            parts.append(str(wrap))
+    return "".join(parts)
 
 
 def _extract_detail(soup: BeautifulSoup, label: str) -> str:
