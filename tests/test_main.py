@@ -1,8 +1,8 @@
 """Tests for main.py's sitemap-based pub_date enrichment."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
-from claude_blog_rss.main import enrich_pub_dates, _preserve_precise_dates
+from claude_blog_rss.main import _preserve_precise_dates, enrich_pub_dates
 
 
 def _post(pub_date: str, precise: bool = False) -> dict:
@@ -11,7 +11,7 @@ def _post(pub_date: str, precise: bool = False) -> dict:
 
 def test_enrich_upgrades_same_day_match():
     posts = {"a": _post("2026-08-04T00:00:00+00:00")}
-    lastmods = {"a": datetime(2026, 8, 4, 22, 48, 15, 722000, tzinfo=timezone.utc)}
+    lastmods = {"a": datetime(2026, 8, 4, 22, 48, 15, 722000, tzinfo=UTC)}
 
     updated = enrich_pub_dates(posts, lastmods)
 
@@ -22,7 +22,7 @@ def test_enrich_upgrades_same_day_match():
 
 def test_enrich_leaves_different_day_untouched():
     posts = {"a": _post("2026-08-04T00:00:00+00:00")}
-    lastmods = {"a": datetime(2026, 8, 10, 15, 40, 35, tzinfo=timezone.utc)}
+    lastmods = {"a": datetime(2026, 8, 10, 15, 40, 35, tzinfo=UTC)}
 
     updated = enrich_pub_dates(posts, lastmods)
 
@@ -43,7 +43,7 @@ def test_enrich_skips_posts_missing_from_sitemap():
 def test_enrich_never_reverts_locked_in_precise_date():
     posts = {"a": _post("2026-08-04T22:48:15+00:00", precise=True)}
     # A later unrelated edit bumped lastmod to a different day.
-    lastmods = {"a": datetime(2026, 8, 10, 9, 0, 0, tzinfo=timezone.utc)}
+    lastmods = {"a": datetime(2026, 8, 10, 9, 0, 0, tzinfo=UTC)}
 
     updated = enrich_pub_dates(posts, lastmods)
 
@@ -54,12 +54,13 @@ def test_enrich_never_reverts_locked_in_precise_date():
 def test_enrich_skips_posts_with_no_pub_date():
     posts = {"a": _post("")}
 
-    updated = enrich_pub_dates(posts, {"a": datetime(2026, 8, 4, tzinfo=timezone.utc)})
+    updated = enrich_pub_dates(posts, {"a": datetime(2026, 8, 4, tzinfo=UTC)})
 
     assert updated == 0
 
 
 # ── --refresh merge (preserving a locked-in precise date) ─────────────────────
+
 
 def test_preserve_precise_dates_survives_refetch():
     """--refresh re-fetches the page (midnight, no flag); the previously

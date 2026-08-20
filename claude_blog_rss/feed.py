@@ -1,14 +1,15 @@
 """Generate RSS 2.0 and Atom 1.0 feeds from post dicts."""
 
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from feedgen.feed import FeedGenerator
 
+from .models import Post
+
 FEED_TITLE = "Claude Blog (unofficial)"
 FEED_DESCRIPTION = (
-    "Unofficial feed for https://claude.com/blog. "
-    "Daily-updated mirror. Content © Anthropic."
+    "Unofficial feed for https://claude.com/blog. Daily-updated mirror. Content © Anthropic."
 )
 FEED_LINK = "https://claude.com/blog"
 FEED_LANGUAGE = "en"
@@ -40,7 +41,7 @@ def _entry_id(slug: str) -> str:
     return f"tag:{TAG_AUTHORITY},{TAG_DATE}:{slug}"
 
 
-def _build_feed_generator(posts: list[dict], feed_url: str) -> FeedGenerator:
+def _build_feed_generator(posts: list[Post], feed_url: str) -> FeedGenerator:
     """Populate a FeedGenerator with channel + entry data shared by RSS/Atom."""
     fg = FeedGenerator()
     fg.load_extension("dc")
@@ -79,7 +80,7 @@ def _build_feed_generator(posts: list[dict], feed_url: str) -> FeedGenerator:
             try:
                 dt = datetime.fromisoformat(post["pub_date"])
                 if dt.tzinfo is None:
-                    dt = dt.replace(tzinfo=timezone.utc)
+                    dt = dt.replace(tzinfo=UTC)
                 fe.published(dt)
                 fe.updated(dt)
             except ValueError:
@@ -110,21 +111,19 @@ def _build_feed_generator(posts: list[dict], feed_url: str) -> FeedGenerator:
         if html_body:
             fe.content(html_body, type="html")
         elif not summary:
-            fe.content(
-                f'<p><a href="{post["url"]}">{post["title"]}</a></p>', type="html"
-            )
+            fe.content(f'<p><a href="{post["url"]}">{post["title"]}</a></p>', type="html")
 
     return fg
 
 
-def render(posts: list[dict], feed_url: str | None = None) -> str:
+def render(posts: list[Post], feed_url: str | None = None) -> str:
     """Render posts (most-recent-first) to an RSS 2.0 XML string."""
     feed_url = feed_url or os.environ.get("FEED_URL", _DEFAULT_FEED_URL)
     fg = _build_feed_generator(posts, feed_url)
     return fg.rss_str(pretty=True).decode("utf-8")
 
 
-def render_atom(posts: list[dict], feed_url: str | None = None) -> str:
+def render_atom(posts: list[Post], feed_url: str | None = None) -> str:
     """Render posts (most-recent-first) to an Atom 1.0 XML string."""
     feed_url = feed_url or os.environ.get("ATOM_FEED_URL", _DEFAULT_ATOM_FEED_URL)
     fg = _build_feed_generator(posts, feed_url)

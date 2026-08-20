@@ -6,10 +6,12 @@ import logging
 import re
 import time
 import xml.etree.ElementTree as ET
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import requests
 from bs4 import BeautifulSoup
+
+from .models import Post
 
 BASE_URL = "https://claude.com/blog"
 SITEMAP_URL = "https://claude.com/sitemap.xml"
@@ -54,15 +56,10 @@ def list_slugs(page: int = 1) -> list[tuple[str, str]]:
     seen: set[str] = set()
     results: list[tuple[str, str]] = []
 
-    for card in soup.find_all(
-        "div", attrs={"role": "listitem", "class": re.compile(r"\bblog_cms_item\b")}
-    ):
-        link = card.find(
-            "a", attrs={"data-cta": "Blog page", "href": re.compile(r"^/blog/[^/]+$")}
-        )
+    for card in soup.find_all("div", attrs={"role": "listitem", "class": "blog_cms_item"}):
+        link = card.find("a", attrs={"data-cta": "Blog page", "href": re.compile(r"^/blog/[^/]+$")})
         if link is None:
             continue
-        slug = link["href"].lstrip("/blog/")
         slug = link["href"][len("/blog/") :]
         title = (link.get("data-cta-copy") or "").strip()
         if slug and slug not in seen:
@@ -72,7 +69,7 @@ def list_slugs(page: int = 1) -> list[tuple[str, str]]:
     return results
 
 
-def fetch_post(slug: str) -> dict | None:
+def fetch_post(slug: str) -> Post | None:
     """Fetch and parse a single post. Returns None on failure."""
     url = f"{BASE_URL}/{slug}"
     try:
@@ -128,10 +125,8 @@ def _extract_body_html(soup: BeautifulSoup) -> str:
     for wrap in soup.find_all("div", class_="blog_post_content_wrap"):
         rich_divs = [
             rich
-            for rich in wrap.find_all(
-                "div", class_=re.compile(r"\bu-rich-text-blog\b")
-            )
-            if not rich.find_parent(class_=re.compile(r"\bw-condition-invisible\b"))
+            for rich in wrap.find_all("div", class_="u-rich-text-blog")
+            if not rich.find_parent(class_="w-condition-invisible")
         ]
         if rich_divs:
             parts.extend(str(rich) for rich in rich_divs)
@@ -142,33 +137,18 @@ def _extract_body_html(soup: BeautifulSoup) -> str:
 
 def _extract_detail(soup: BeautifulSoup, label: str) -> str:
     """Pull the value text from a hero_blog_post_details_item with a given label."""
-    for item in soup.find_all(
-        "li", class_=re.compile(r"\bhero_blog_post_details_item\b")
-    ):
-        label_el = item.find(class_=re.compile(r"\bu-foreground-tertiary\b"))
-        if label_el and label_el.get_text(strip=True) == label:
-            # Value is the next sibling div / link text
-            value_els = item.find_all(class_=re.compile(r"\bu-text-style-body-3\b"))
-            texts = [
-                el.get_text(strip=True) for el in value_els if el.get_text(strip=True)
-            ]
-            if texts:
-                return texts[0]
-    return ""
+    values = _extract_detail_list(soup, label)
+    return values[0] if values else ""
 
 
 def _extract_detail_list(soup: BeautifulSoup, label: str) -> list[str]:
     """Pull all value texts (e.g. multiple categories) from a details item."""
-    for item in soup.find_all(
-        "li", class_=re.compile(r"\bhero_blog_post_details_item\b")
-    ):
-        label_el = item.find(class_=re.compile(r"\bu-foreground-tertiary\b"))
+    for item in soup.find_all("li", class_="hero_blog_post_details_item"):
+        label_el = item.find(class_="u-foreground-tertiary")
         if label_el and label_el.get_text(strip=True) == label:
             texts = [
                 el.get_text(strip=True)
-                for el in item.find_all(
-                    ["a", "div"], class_=re.compile(r"\bu-text-style-body-3\b")
-                )
+                for el in item.find_all(["a", "div"], class_="u-text-style-body-3")
             ]
             return [t for t in texts if t]
     return []
@@ -179,7 +159,7 @@ def _extract_json_ld(soup: BeautifulSoup) -> dict:
     for script in soup.find_all("script", type="application/ld+json"):
         try:
             data = json.loads(script.string or "")
-        except (json.JSONDecodeError, TypeError):
+        except json.JSONDecodeError, TypeError:
             continue
         if isinstance(data, dict) and data.get("@type") == "BlogPosting":
             return data
@@ -216,7 +196,7 @@ def _parse_date(date_str: str) -> datetime | None:
         return None
     for fmt in _DATE_FORMATS:
         try:
-            return datetime.strptime(date_str.strip(), fmt).replace(tzinfo=timezone.utc)
+            return datetime.strptime(date_str.strip(), fmt).replace(tzinfo=UTC)
         except ValueError:
             continue
     logger.warning("Could not parse date: %r", date_str)
@@ -271,9 +251,7 @@ def fetch_sitemap_lastmods() -> dict[str, datetime]:
     return _parse_sitemap(resp.content)
 
 
-def scrape_all_pages(
-    max_pages: int = 20, delay: float = REQUEST_DELAY
-) -> list[tuple[str, str]]:
+def scrape_all_pages(max_pages: int = 20, delay: float = REQUEST_DELAY) -> list[tuple[str, str]]:
     """Walk all listing pages and return unique (slug, title) pairs."""
     all_slugs: dict[str, str] = {}
     for page in range(1, max_pages + 1):
