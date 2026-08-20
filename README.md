@@ -29,12 +29,12 @@ A GitHub Actions cron job runs every day, scrapes `claude.com/blog` for new post
 1. Fork or clone
 2. Create a new GitHub repo and push
 3. In repo Settings → Pages, set Source = `main` branch, Folder = `/docs`
-4. Update `_DEFAULT_FEED_URL` / `_DEFAULT_ATOM_FEED_URL` in `src/feed.py` (or set the `FEED_URL` / `ATOM_FEED_URL` env vars as repo variables/secrets)
+4. Update `_DEFAULT_FEED_URL` / `_DEFAULT_ATOM_FEED_URL` in `claude_blog_rss/feed.py` (or set the `FEED_URL` / `ATOM_FEED_URL` env vars as repo variables/secrets)
 5. Run the initial backfill manually:
 
    ```
    uv sync
-   uv run python -m src.main --backfill
+   uv run update-feed --backfill
    git add data/posts.json docs/rss.xml docs/atom.xml && git commit -m "Initial backfill"
    git push
    ```
@@ -46,9 +46,9 @@ A GitHub Actions cron job runs every day, scrapes `claude.com/blog` for new post
 ```bash
 uv sync --group dev
 uv run pytest
-uv run python -m src.main          # daily run (checks page 1-2)
-uv run python -m src.main --backfill   # fetch all historical posts
-uv run python -m src.main --refresh    # re-fetch all known posts, overwriting stored data
+uv run update-feed          # daily run (checks page 1-2)
+uv run update-feed --backfill   # fetch all historical posts
+uv run update-feed --refresh    # re-fetch all known posts, overwriting stored data
 ```
 
 ## Disclaimer

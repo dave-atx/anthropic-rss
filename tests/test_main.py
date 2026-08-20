@@ -2,7 +2,7 @@
 
 from datetime import datetime, timezone
 
-from src.main import enrich_pub_dates, _preserve_precise_dates
+from claude_blog_rss.main import enrich_pub_dates, _preserve_precise_dates
 
 
 def _post(pub_date: str, precise: bool = False) -> dict:

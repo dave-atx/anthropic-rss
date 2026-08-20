@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 from bs4 import BeautifulSoup
 
-from src.scrape import (
+from claude_blog_rss.scrape import (
     _extract_body_html,
     _extract_detail,
     _extract_detail_list,

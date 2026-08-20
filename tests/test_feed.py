@@ -4,7 +4,7 @@ import xml.etree.ElementTree as ET
 
 import feedparser
 
-from src.feed import FEED_LINK, render, render_atom
+from claude_blog_rss.feed import FEED_LINK, render, render_atom
 
 NS = {
     "atom": "http://www.w3.org/2005/Atom",
