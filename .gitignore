@@ -7,7 +7,14 @@ dist/
 *.egg-info/
 .DS_Store
 
-# generated at deploy time by the update-feed workflow; not the source of
-# truth for what's served (Pages deploys straight from the build artifact)
-docs/rss.xml
+# Rendered feeds are pure build output: regenerable from the JSON state, and
+# coupled to the feedgen version, so a library bump would otherwise churn every
+# committed file. Pages deploys them straight from the build artifact.
 docs/atom.xml
+docs/archive-*.xml
+
+# Current-year state. Rebuilt every run, so committing it would mean a ~2 MB
+# blob twice a day; it round-trips through actions/cache instead, with the
+# deployed copy on Pages as the fallback. Closed years (docs/archive-*.json)
+# ARE committed -- they can never change again.
+docs/feed.json

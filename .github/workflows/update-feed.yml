@@ -1,4 +1,4 @@
-name: Update RSS feed
+name: Update feeds
 
 on:
   schedule:
@@ -34,10 +34,12 @@ jobs:
       - name: Install dependencies
         run: uv sync --no-dev
 
+      # Current-year state. A miss is recoverable: the run falls back to the
+      # copy deployed on Pages, then to the committed archives.
       - name: Restore post state cache
         uses: actions/cache/restore@v6
         with:
-          path: data/posts.json
+          path: docs/feed.json
           key: posts-state-${{ github.run_id }}
           restore-keys: posts-state-
 
@@ -47,7 +49,7 @@ jobs:
       - name: Save post state cache
         uses: actions/cache/save@v6
         with:
-          path: data/posts.json
+          path: docs/feed.json
           key: posts-state-${{ github.run_id }}
 
       - name: Configure Pages
