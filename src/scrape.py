@@ -5,15 +5,19 @@ import json
 import logging
 import re
 import time
+import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 
 import requests
 from bs4 import BeautifulSoup
 
 BASE_URL = "https://claude.com/blog"
+SITEMAP_URL = "https://claude.com/sitemap.xml"
 PAGINATION_PARAM = "d7430fcd_page"
 REQUEST_DELAY = 1.0
 USER_AGENT = "claude-blog-rss/1.0 (+https://github.com/dave-atx/anthropic-rss)"
+
+_SITEMAP_NS = {"sm": "http://www.sitemaps.org/schemas/sitemap/0.9"}
 
 logger = logging.getLogger(__name__)
 
@@ -195,6 +199,54 @@ def _parse_date(date_str: str) -> datetime | None:
             continue
     logger.warning("Could not parse date: %r", date_str)
     return None
+
+
+def _parse_sitemap(xml_bytes: bytes) -> dict[str, datetime]:
+    """Return {slug: lastmod} for direct /blog/<slug> entries in a sitemap.
+
+    Webflow bumps a page's <lastmod> on each CMS publish of that page, which
+    gives genuine time-of-day precision (unlike the dynamically-rendered
+    Last-Modified HTTP header on claude.com, which just reflects when that
+    particular response was cache-filled, not the page's real publish/edit
+    time).
+    """
+    try:
+        root = ET.fromstring(xml_bytes)
+    except ET.ParseError as exc:
+        logger.error("Failed to parse sitemap: %s", exc)
+        return {}
+
+    prefix = f"{BASE_URL}/"
+    lastmods: dict[str, datetime] = {}
+    for url_el in root.findall("sm:url", _SITEMAP_NS):
+        loc_el = url_el.find("sm:loc", _SITEMAP_NS)
+        lastmod_el = url_el.find("sm:lastmod", _SITEMAP_NS)
+        if loc_el is None or lastmod_el is None:
+            continue
+        loc = (loc_el.text or "").strip()
+        if not loc.startswith(prefix):
+            continue
+        slug = loc[len(prefix) :]
+        if not slug or "/" in slug:
+            continue
+        try:
+            lastmods[slug] = datetime.fromisoformat(
+                (lastmod_el.text or "").strip().replace("Z", "+00:00")
+            )
+        except ValueError:
+            continue
+    return lastmods
+
+
+def fetch_sitemap_lastmods() -> dict[str, datetime]:
+    """Fetch and parse claude.com/sitemap.xml. Returns {} on failure."""
+    try:
+        resp = get_session().get(SITEMAP_URL, timeout=30)
+        resp.raise_for_status()
+    except requests.RequestException as exc:
+        logger.error("Failed to fetch sitemap: %s", exc)
+        return {}
+    return _parse_sitemap(resp.content)
 
 
 def scrape_all_pages(

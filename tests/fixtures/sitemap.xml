@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">
+  <url>
+    <loc>https://claude.com/ja</loc>
+    <lastmod>2026-08-20T00:33:42.863Z</lastmod>
+  </url>
+  <url>
+    <loc>https://claude.com/blog/same-day-post</loc>
+    <lastmod>2026-08-04T22:48:15.722Z</lastmod>
+  </url>
+  <url>
+    <loc>https://claude.com/blog/edited-later-post</loc>
+    <lastmod>2026-08-10T15:40:35.203Z</lastmod>
+  </url>
+  <url>
+    <loc>https://claude.com/ja/blog/same-day-post</loc>
+    <lastmod>2026-08-04T22:48:15.722Z</lastmod>
+  </url>
+  <url>
+    <loc>https://claude.com/blog/no-lastmod-post</loc>
+  </url>
+</urlset>

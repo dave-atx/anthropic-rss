@@ -12,6 +12,7 @@ from src.scrape import (
     _extract_json_ld,
     _extract_summary,
     _parse_date,
+    _parse_sitemap,
 )
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -151,3 +152,35 @@ def test_parse_date_formats(date_str, year):
 def test_parse_date_invalid():
     assert _parse_date("") is None
     assert _parse_date("not a date") is None
+
+
+# ── sitemap ──────────────────────────────────────────────────────────────────
+
+def sitemap_xml() -> bytes:
+    return (FIXTURES / "sitemap.xml").read_bytes()
+
+
+def test_parse_sitemap_extracts_blog_slugs():
+    lastmods = _parse_sitemap(sitemap_xml())
+    assert set(lastmods) == {"same-day-post", "edited-later-post"}
+
+
+def test_parse_sitemap_ignores_non_blog_and_localized_urls():
+    lastmods = _parse_sitemap(sitemap_xml())
+    assert "ja" not in lastmods
+
+
+def test_parse_sitemap_ignores_entries_without_lastmod():
+    lastmods = _parse_sitemap(sitemap_xml())
+    assert "no-lastmod-post" not in lastmods
+
+
+def test_parse_sitemap_parses_timestamps():
+    lastmods = _parse_sitemap(sitemap_xml())
+    dt = lastmods["same-day-post"]
+    assert dt.year == 2026 and dt.month == 8 and dt.day == 4
+    assert dt.hour == 22 and dt.minute == 48
+
+
+def test_parse_sitemap_handles_invalid_xml():
+    assert _parse_sitemap(b"not xml") == {}

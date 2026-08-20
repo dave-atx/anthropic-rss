@@ -5,9 +5,16 @@ import json
 import logging
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
-from .scrape import fetch_post, list_slugs, scrape_all_pages, REQUEST_DELAY
+from .scrape import (
+    fetch_post,
+    fetch_sitemap_lastmods,
+    list_slugs,
+    scrape_all_pages,
+    REQUEST_DELAY,
+)
 from .feed import render, render_atom
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -46,6 +53,57 @@ def save_feed(posts: dict[str, dict], feed_count: int = 20) -> None:
     with ATOM_FEED_PATH.open("w") as f:
         f.write(render_atom(feed_posts))
     logger.info("Atom feed written: %s (%d items)", ATOM_FEED_PATH, len(feed_posts))
+
+
+def _parse_stored_date(pub_date: str | None) -> datetime | None:
+    if not pub_date:
+        return None
+    try:
+        dt = datetime.fromisoformat(pub_date)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def enrich_pub_dates(posts: dict[str, dict], lastmods: dict[str, datetime]) -> int:
+    """Upgrade a post's date-only pub_date to a precise time when the
+    sitemap's lastmod for it falls on the same UTC day as the page's own
+    Date field. Once a post is upgraded it's marked pub_date_precise and
+    never re-evaluated, so a later unrelated edit (which bumps lastmod to a
+    different day) can't erase a precise time already locked in.
+
+    Returns the number of posts upgraded.
+    """
+    updated = 0
+    for slug, post in posts.items():
+        if post.get("pub_date_precise"):
+            continue
+        lastmod = lastmods.get(slug)
+        if lastmod is None:
+            continue
+        pub_date = _parse_stored_date(post.get("pub_date"))
+        if pub_date is None:
+            continue
+        if lastmod.date() == pub_date.date():
+            post["pub_date"] = lastmod.replace(microsecond=0).isoformat()
+            post["pub_date_precise"] = True
+            updated += 1
+    return updated
+
+
+def _preserve_precise_dates(posts: dict[str, dict], refetched: dict[str, dict]) -> None:
+    """A re-fetched post has no pub_date_precise flag and a midnight-UTC
+    pub_date, since fetch_post() only reads the page's Date field. Without
+    this, --refresh would silently erase every precise timestamp
+    enrich_pub_dates previously locked in.
+    """
+    for slug, post in refetched.items():
+        old = posts.get(slug)
+        if old and old.get("pub_date_precise"):
+            post["pub_date"] = old["pub_date"]
+            post["pub_date_precise"] = True
 
 
 def fetch_new_posts(new_slugs: list[tuple[str, str]], delay: float = REQUEST_DELAY) -> dict[str, dict]:
@@ -95,11 +153,19 @@ def main() -> None:
 
     if new_slugs:
         fetched = fetch_new_posts(new_slugs)
+        _preserve_precise_dates(posts, fetched)
         posts.update(fetched)
-        save_state(posts)
-        logger.info("State saved: %d total posts", len(posts))
     else:
         logger.info("No new posts found.")
+
+    lastmods = fetch_sitemap_lastmods()
+    enriched = enrich_pub_dates(posts, lastmods) if lastmods else 0
+    if enriched:
+        logger.info("Enriched %d post(s) with precise publish times from sitemap", enriched)
+
+    if new_slugs or enriched:
+        save_state(posts)
+        logger.info("State saved: %d total posts", len(posts))
 
     save_feed(posts, feed_count=args.feed_count)
 
