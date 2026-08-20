@@ -141,8 +141,8 @@ def _build_feed_generator(
 
     for post in sorted_posts:
         fe = fg.add_entry()
-        # A tag: URI is a spec-valid atom:id (RFC 4151); posts.json is
-        # already keyed by slug, so this is stable and URL-independent.
+        # A tag: URI is a spec-valid atom:id (RFC 4151); state is already
+        # keyed by slug, so this is stable and URL-independent.
         fe.id(_entry_id(post["slug"]))
         fe.title(post["title"] or post["slug"])
         fe.link(href=post["url"])

@@ -1,7 +1,7 @@
 """Render and parse JSON Feed 1.1 documents.
 
-JSON Feed is meant to become this project's canonical persisted state, replacing
-data/posts.json: a `render_jsonfeed` → `parse_jsonfeed` round trip must reproduce every
+JSON Feed is this project's canonical persisted state: a `render_jsonfeed` →
+`parse_jsonfeed` round trip must reproduce every
 `Post` field exactly, including the large raw `html_body`. Fields JSON Feed has no native
 slot for (slug, date_str, pub_date_precise) live in the spec-sanctioned `_claude_blog_rss`
 extension object rather than being lossily folded into a native field.

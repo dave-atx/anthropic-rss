@@ -11,7 +11,6 @@ FEED_URL = "https://example.github.io/anthropic-rss/feed.json"
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 DOCS_PATH = ROOT / "docs"
-LEGACY_POSTS_PATH = ROOT / "data" / "posts.json"
 
 
 def _make_post(i: int, **overrides) -> dict:
@@ -39,7 +38,7 @@ def _make_posts(n: int) -> list[dict]:
 
 # Schema defaults for the always-present Post fields (everything but
 # pub_date_precise, which is genuinely optional). A couple of legacy entries
-# in data/posts.json predate authors/summary/image_url being added to the
+# in the stored corpus predate authors/summary/image_url being added to the
 # schema and simply lack those keys rather than storing them empty;
 # parse_jsonfeed (per spec) always fills always-present fields back in, so
 # the round trip legitimately normalizes those two stale entries to the full
@@ -61,16 +60,10 @@ _POST_DEFAULTS = {
 
 
 def _real_corpus() -> dict[str, dict]:
-    """Every post this checkout has on disk, whichever store it lives in.
-
-    Prefers the committed JSON Feed archives, so this keeps exercising a real
-    corpus after the legacy posts.json seed is deleted.
-    """
+    """Every post this checkout has on disk: the committed closed-year archives."""
     posts: dict[str, dict] = {}
     for path in sorted(DOCS_PATH.glob("archive-*.json")):
         posts.update(parse_jsonfeed(path.read_text()))
-    if not posts and LEGACY_POSTS_PATH.exists():
-        posts = json.loads(LEGACY_POSTS_PATH.read_text())
     return posts
 
 

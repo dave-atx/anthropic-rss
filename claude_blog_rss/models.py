@@ -1,7 +1,7 @@
 """Typed shape of a scraped blog post.
 
-This mirrors the on-disk data/posts.json schema: each post is stored as a
-JSON object keyed by slug, with the fields below. `pub_date_precise` is only
+This is what jsonfeed.py serializes to and from: the published JSON Feed
+documents in docs/ are the stored form, keyed by slug once loaded. `pub_date_precise` is only
 present once `enrich_pub_dates` has upgraded a post's timestamp from the
 sitemap's lastmod; all other fields are always present, set by
 `scrape.fetch_post`.

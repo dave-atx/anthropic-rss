@@ -28,11 +28,6 @@ DOCS_PATH = ROOT / "docs"
 CURRENT_JSON_PATH = DOCS_PATH / "feed.json"
 ATOM_PATH = DOCS_PATH / "atom.xml"
 
-# Pre-JSON-Feed state file. Kept only as a last-resort seed so the first run
-# after the migration doesn't start from nothing; delete it once Pages has
-# published feed.json at least once.
-LEGACY_POSTS_PATH = ROOT / "data" / "posts.json"
-
 DAILY_PAGES = 2
 
 
@@ -41,9 +36,9 @@ def load_state() -> dict[str, Post]:
 
     Closed years are committed, so they always come from the working tree.
     The current year is rebuilt every run and therefore isn't committed; it is
-    recovered from, in order: the local file (restored by actions/cache), the
-    copy deployed to Pages, or the legacy posts.json seed. All three can miss
-    on a first run, in which case the scrape refills it.
+    recovered from the local file (restored by actions/cache), falling back to
+    the copy already deployed to Pages. Both can miss on a first run, in which
+    case the scrape refills it.
     """
     posts: dict[str, Post] = {}
 
@@ -73,11 +68,6 @@ def _load_current_year() -> dict[str, Post]:
         else:
             logger.info("Recovered %d current-year post(s) from Pages", len(current))
             return current
-
-    if LEGACY_POSTS_PATH.exists():
-        legacy = json.loads(LEGACY_POSTS_PATH.read_text())
-        logger.warning("Falling back to legacy seed %s (%d posts)", LEGACY_POSTS_PATH, len(legacy))
-        return legacy
 
     logger.warning("No current-year state recovered; it will be re-scraped")
     return {}
