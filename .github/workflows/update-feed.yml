@@ -2,9 +2,8 @@ name: Update feeds
 
 on:
   schedule:
-    - cron: "0 14 * * *"   # ~7am Pacific (UTC offset drifts 1hr across DST)
-    - cron: "0 1 * * *"    # ~6pm Pacific (UTC offset drifts 1hr across DST)
-  workflow_dispatch:        # allow manual trigger
+    - cron: "23 * * * *"   # hourly, off the top of the hour to dodge the scheduler rush
+  workflow_dispatch:        # allow manual trigger; always deploys
 
 permissions:
   contents: read
@@ -17,19 +16,18 @@ concurrency:
 
 jobs:
   update:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.14"
-
+      # Python comes from .python-version, installed by uv itself.
       - name: Install uv
         uses: astral-sh/setup-uv@v10.0.1
+        with:
+          cache-python: true
 
       - name: Install dependencies
         run: uv sync --no-dev
@@ -46,20 +44,40 @@ jobs:
       - name: Run feed update
         run: uv run update-feed
 
-      - name: Save post state cache
-        uses: actions/cache/save@v6
+      # Rendering is byte-deterministic, so a digest of docs/ identifies what
+      # would be deployed. The state cache is keyed on it: an existing key
+      # means this exact site was already deployed and saved.
+      - name: Digest rendered site
+        id: digest
+        run: echo "sha=$(find docs -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -c1-16)" >> "$GITHUB_OUTPUT"
+
+      - name: Check for an identical deploy
+        id: deployed
+        uses: actions/cache/restore@v6
         with:
           path: docs/feed.json
-          key: posts-state-${{ github.run_id }}
+          key: posts-state-${{ steps.digest.outputs.sha }}
+          lookup-only: true
 
       - name: Configure Pages
+        if: steps.deployed.outputs.cache-hit != 'true' || github.event_name != 'schedule'
         uses: actions/configure-pages@v6
 
       - name: Upload Pages artifact
+        if: steps.deployed.outputs.cache-hit != 'true' || github.event_name != 'schedule'
         uses: actions/upload-pages-artifact@v5
         with:
           path: docs
 
       - name: Deploy to GitHub Pages
         id: deployment
+        if: steps.deployed.outputs.cache-hit != 'true' || github.event_name != 'schedule'
         uses: actions/deploy-pages@v5
+
+      # After the deploy, so a failed deploy isn't recorded as done.
+      - name: Save post state cache
+        if: steps.deployed.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: docs/feed.json
+          key: posts-state-${{ steps.digest.outputs.sha }}

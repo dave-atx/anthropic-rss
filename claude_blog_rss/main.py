@@ -28,7 +28,8 @@ DOCS_PATH = ROOT / "docs"
 CURRENT_JSON_PATH = DOCS_PATH / "feed.json"
 ATOM_PATH = DOCS_PATH / "atom.xml"
 
-DAILY_PAGES = 2
+# The listing shows ~15 posts per page; hourly runs never see more than one page of news.
+LISTING_PAGES = 1
 
 
 def load_state() -> dict[str, Post]:
@@ -210,9 +211,9 @@ def main() -> None:
         listing = scrape_all_pages()
     else:
         listing: list[tuple[str, str]] = []
-        for page in range(1, DAILY_PAGES + 1):
+        for page in range(1, LISTING_PAGES + 1):
             listing.extend(list_slugs(page))
-            if page < DAILY_PAGES:
+            if page < LISTING_PAGES:
                 time.sleep(REQUEST_DELAY)
 
     if args.refresh:

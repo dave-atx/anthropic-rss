@@ -10,16 +10,15 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.14"
-
+      # Python comes from .python-version, installed by uv itself.
       - name: Install uv
         uses: astral-sh/setup-uv@v10.0.1
+        with:
+          cache-python: true
 
       - name: Install dependencies
         run: uv sync --group dev

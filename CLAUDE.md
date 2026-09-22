@@ -152,7 +152,7 @@ that; clients dedupe on the `atom:id` tag URI.
 Why XML isn't committed: it is regenerable and coupled to the `feedgen` version, so a library
 bump would rewrite every "immutable" archive file. JSON has no such coupling.
 
-Why the current year isn't committed: it changes twice a day and is ~2 MB by December. It is
+Why the current year isn't committed: it can change hourly and is ~2 MB by December. It is
 recovered in order from `actions/cache` → the copy deployed on Pages (`fetch_text`) → a
 re-scrape. Closed years always come from git, so history cannot be lost to a cache miss.
 

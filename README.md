@@ -20,8 +20,8 @@ https://dave-atx.github.io/anthropic-rss/feed.json
 Add either URL to your feed reader (Feedly, NetNewsWire, Miniflux, …); both carry the same posts.
 Atom is the safer default — JSON Feed support is less widespread.
 
-The feeds are updated twice daily (~7am and ~6pm Pacific, drifting an hour across DST — 14:00 and
-01:00 UTC). The subscription feed carries the current year, and never fewer than the 20 most recent
+The feeds are checked hourly, at 23 minutes past the hour; Pages is only redeployed when something
+changed. The subscription feed carries the current year, and never fewer than the 20 most recent
 posts.
 
 ## Full history
@@ -43,9 +43,9 @@ A year is *closed* once it is past: no post can be added to it, so its documents
 
 ## How it works
 
-A GitHub Actions workflow runs twice a day, scrapes `claude.com/blog` for new posts, and rebuilds
-every document in `docs/`, which it deploys as a GitHub Pages artifact via
-`actions/upload-pages-artifact` and `actions/deploy-pages`.
+A GitHub Actions workflow runs hourly, scrapes `claude.com/blog` for new posts, and rebuilds
+every document in `docs/`. If the result differs from the last deploy, it deploys it as a GitHub
+Pages artifact via `actions/upload-pages-artifact` and `actions/deploy-pages`.
 
 The JSON Feed documents are also the scraper's state — there is no separate database. They partition
 the corpus exactly: `feed.json` holds the current year, `archive-YYYY.json` holds each closed year,
@@ -54,7 +54,7 @@ raw `html_body`; the few fields JSON Feed has no slot for ride in the spec-sanct
 `_claude_blog_rss` extension object.
 
 Closed-year archives are committed, so history is durable in git and a cache miss cannot lose it.
-The current year is not committed — it would be a ~2 MB blob twice a day — and is recovered, in
+The current year is not committed — it would be a ~2 MB blob on every change — and is recovered, in
 order, from `actions/cache`, the copy already deployed on Pages, or a re-scrape. All rendered XML is
 gitignored build output: it is regenerable, and coupled to the `feedgen` version, so committing it
 would churn every file on a library bump.
