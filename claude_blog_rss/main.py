@@ -164,17 +164,50 @@ def enrich_pub_dates(posts: dict[str, Post], lastmods: dict[str, datetime]) -> i
     return updated
 
 
-def _preserve_precise_dates(posts: dict[str, Post], refetched: dict[str, Post]) -> None:
+def stamp_discovery_times(fetched: dict[str, Post], now: datetime) -> int:
+    """Give a newly discovered post the time we first saw it instead of
+    midnight UTC, when that falls on the page's own Date (in UTC). fetch_post()
+    only has a date, and midnight UTC renders as the previous evening in US
+    time zones. With hourly runs the discovery time trails the real publish
+    time by under an hour and never precedes it.
+
+    Unlike enrich_pub_dates this does not set pub_date_precise, so a same-day
+    sitemap lastmod can still replace it with the real time. The timestamp is
+    captured once into state, so rendering stays independent of the clock.
+
+    Returns the number of posts stamped.
+    """
+    stamped = 0
+    for post in fetched.values():
+        pub_date = _parse_stored_date(post.get("pub_date"))
+        if pub_date is None or pub_date != pub_date.replace(hour=0, minute=0, second=0):
+            continue
+        if now.date() == pub_date.date():
+            post["pub_date"] = now.astimezone(UTC).replace(microsecond=0).isoformat()
+            stamped += 1
+    return stamped
+
+
+def _preserve_pub_times(posts: dict[str, Post], refetched: dict[str, Post]) -> None:
     """A re-fetched post has no pub_date_precise flag and a midnight-UTC
     pub_date, since fetch_post() only reads the page's Date field. Without
     this, --refresh would silently erase every precise timestamp
-    enrich_pub_dates previously locked in.
+    enrich_pub_dates previously locked in, and every discovery time
+    stamp_discovery_times recorded. A discovery time is kept only while the
+    page's Date still agrees with it.
     """
     for slug, post in refetched.items():
         old = posts.get(slug)
-        if old and old.get("pub_date_precise"):
+        if not old:
+            continue
+        if old.get("pub_date_precise"):
             post["pub_date"] = old["pub_date"]
             post["pub_date_precise"] = True
+            continue
+        old_date = _parse_stored_date(old.get("pub_date"))
+        new_date = _parse_stored_date(post.get("pub_date"))
+        if old_date and new_date and old_date.date() == new_date.date():
+            post["pub_date"] = old["pub_date"]
 
 
 def fetch_new_posts(
@@ -227,7 +260,11 @@ def main() -> None:
 
     if new_slugs:
         fetched = fetch_new_posts(new_slugs)
-        _preserve_precise_dates(posts, fetched)
+        stamp_discovery_times(
+            {slug: post for slug, post in fetched.items() if slug not in posts},
+            datetime.now(UTC),
+        )
+        _preserve_pub_times(posts, fetched)
         posts.update(fetched)
     else:
         logger.info("No new posts found.")

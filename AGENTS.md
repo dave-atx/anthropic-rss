@@ -23,7 +23,7 @@ Data flows one direction: `scrape` → `main` → `{jsonfeed, archives, feed}`. 
 
 ```bash
 uv sync --group dev
-uv run pytest -q          # 82 tests, all offline (HTML fixtures, no network)
+uv run pytest -q          # 88 tests, all offline (HTML fixtures, no network)
 uv run ruff check .
 uv run ruff format .
 uv run update-feed        # real run — hits the network
@@ -52,12 +52,15 @@ them. Grabbing only the first silently truncates the article — this was a real
 how Webflow hides unused components; without that check, testimonial text splices into
 article bodies.
 
-**`pub_date` precision is a two-stage thing.** `fetch_post` only reads the page's Date
-field, giving midnight UTC. `enrich_pub_dates` later upgrades it to a real time-of-day from
-the sitemap's `lastmod`, but only when `lastmod` falls on the same UTC day, and then sets
-`pub_date_precise` so it's never re-evaluated. `_preserve_precise_dates` exists because
-`--refresh` would otherwise erase every precise timestamp it had locked in. Touch any of
-these three and check the other two.
+**`pub_date` precision is a three-stage thing.** `fetch_post` only reads the page's Date
+field, giving midnight UTC — which readers show as the previous evening in US time zones.
+`stamp_discovery_times` replaces that on a *newly discovered* post with the time the run first saw
+it, if that is still the same UTC day (hourly runs keep it within the hour). `enrich_pub_dates`
+later upgrades either to the real time from the sitemap's `lastmod`, but only when `lastmod` falls
+on the same UTC day, and then sets `pub_date_precise` so it's never re-evaluated. A discovery time
+is *not* flagged precise, so the sitemap can still override it. `_preserve_pub_times` exists because
+`--refresh` would otherwise erase every precise timestamp and discovery time. Touch any of these
+four and check the others. The discovery time is captured once into state, not at render time.
 
 **Rendered output must never touch the wall clock.** Archive documents are immutable, so a
 render-time timestamp would rewrite every file on every run. `_build_feed_generator` sets the
