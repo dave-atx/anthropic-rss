@@ -55,7 +55,7 @@ article bodies.
 **`pub_date` precision is a three-stage thing.** `fetch_post` only reads the page's Date
 field, giving midnight UTC — which readers show as the previous evening in US time zones.
 `stamp_discovery_times` replaces that on a *newly discovered* post with the time the run first saw
-it, if that is still the same UTC day (hourly runs keep it within the hour). `enrich_pub_dates`
+it, if that is still the same UTC day (the Worker dispatches a run within ~10 minutes of a post appearing). `enrich_pub_dates`
 later upgrades either to the real time from the sitemap's `lastmod`, but only when `lastmod` falls
 on the same UTC day, and then sets `pub_date_precise` so it's never re-evaluated. A discovery time
 is *not* flagged precise, so the sitemap can still override it. `_preserve_pub_times` exists because
@@ -98,6 +98,25 @@ gh repo set-default dave-atx/anthropic-rss
 ```
 
 Sanity-check with `gh repo view --json nameWithOwner` before trusting any `gh` output.
+
+**The Worker in `worker/` only detects; it never scrapes.** It runs on Cloudflare's free plan,
+whose 10 ms CPU cap per invocation is why it's TypeScript with a regex scan rather than the Python
+code (HTMLRewriter took ~14 ms on the ~800 KB listing; the regex scan ~3 ms). Every 10 minutes it
+reads listing page 1, compares slugs with the set stored in KV, and on a new one calls
+`workflow_dispatch` on `update-feed.yml`. KV is written only after a successful dispatch, so failures
+retry next tick. Its card/link matching mirrors `scrape.list_slugs` — change one, change both;
+`worker/test/index.spec.ts` checks both agree on `tests/fixtures/blog_listing.html`. The workflow's
+own cron is a 6-hourly backstop, so a broken Worker degrades latency, not correctness.
+
+```bash
+cd worker && npm ci
+npm run check && npm test             # tsc + vitest in workerd, offline
+npx wrangler secret put GITHUB_TOKEN  # fine-grained PAT: this repo, Actions read/write
+```
+
+Deploys happen in `.github/workflows/deploy-worker.yml` on pushes to `main` that touch `worker/`,
+after the same checks pass. It needs repo secrets `CLOUDFLARE_API_TOKEN` ("Edit Cloudflare
+Workers" template) and `CLOUDFLARE_ACCOUNT_ID`. The KV namespace id is pinned in `wrangler.jsonc`.
 
 ## Verifying changes to scraping or feed rendering
 
@@ -155,7 +174,7 @@ that; clients dedupe on the `atom:id` tag URI.
 Why XML isn't committed: it is regenerable and coupled to the `feedgen` version, so a library
 bump would rewrite every "immutable" archive file. JSON has no such coupling.
 
-Why the current year isn't committed: it can change hourly and is ~2 MB by December. It is
+Why the current year isn't committed: it can change several times a day and is ~2 MB by December. It is
 recovered in order from `actions/cache` → the copy deployed on Pages (`fetch_text`) → a
 re-scrape. Closed years always come from git, so history cannot be lost to a cache miss.
 

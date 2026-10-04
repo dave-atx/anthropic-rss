@@ -2,8 +2,10 @@ name: Update feeds
 
 on:
   schedule:
-    - cron: "23 * * * *"   # hourly, off the top of the hour to dodge the scheduler rush
-  workflow_dispatch:        # allow manual trigger; always deploys
+    # Backstop only. New posts are normally caught within ~10 minutes by the
+    # Cloudflare Worker in worker/, which dispatches this workflow directly.
+    - cron: "23 */6 * * *"
+  workflow_dispatch:        # manual trigger and the Worker's dispatch; always deploys
 
 permissions:
   contents: read

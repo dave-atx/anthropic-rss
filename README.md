@@ -20,8 +20,7 @@ https://dave-atx.github.io/anthropic-rss/feed.json
 Add either URL to your feed reader (Feedly, NetNewsWire, Miniflux, …); both carry the same posts.
 Atom is the safer default — JSON Feed support is less widespread.
 
-The feeds are checked hourly, at 23 minutes past the hour; Pages is only redeployed when something
-changed. The subscription feed carries the current year, and never fewer than the 20 most recent
+New posts usually appear in the feeds within about 15 minutes of publication. The subscription feed carries the current year, and never fewer than the 20 most recent
 posts.
 
 ## Full history
@@ -43,7 +42,10 @@ A year is *closed* once it is past: no post can be added to it, so its documents
 
 ## How it works
 
-A GitHub Actions workflow runs hourly, scrapes `claude.com/blog` for new posts, and rebuilds
+A small Cloudflare Worker (`worker/`) polls the first page of `claude.com/blog` every 10 minutes. When
+a slug appears that it hasn't seen before, it dispatches the GitHub Actions workflow; the workflow
+also runs every 6 hours on its own as a backstop. The workflow scrapes `claude.com/blog` for new
+posts and rebuilds
 every document in `docs/`. If the result differs from the last deploy, it deploys it as a GitHub
 Pages artifact via `actions/upload-pages-artifact` and `actions/deploy-pages`.
 

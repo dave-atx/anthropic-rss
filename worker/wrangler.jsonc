@@ -1,0 +1,29 @@
+// Polls the claude.com/blog listing and kicks the GitHub Actions feed build
+// as soon as a new post appears. Detection only: scraping and rendering stay in
+// the Python pipeline, which this Worker never duplicates.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "claude-blog-rss-poller",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-04",
+  "workers_dev": false,
+  "triggers": {
+    // Every 10 minutes, off the round minutes. Each tick is one listing fetch.
+    "crons": ["7-59/10 * * * *"]
+  },
+  "kv_namespaces": [
+    // claude-blog-rss-poller-state. Pinned so CI deploys always bind the same one.
+    { "binding": "STATE", "id": "fb42897d88b949faae7a110ce84c4351" }
+  ],
+  "vars": {
+    "GITHUB_REPO": "dave-atx/anthropic-rss",
+    "GITHUB_WORKFLOW": "update-feed.yml",
+    "GITHUB_REF": "main"
+  },
+  // GITHUB_TOKEN is a secret: `npx wrangler secret put GITHUB_TOKEN`.
+  "secrets": { "required": ["GITHUB_TOKEN"] },
+  "observability": {
+    "enabled": true,
+    "traces": { "enabled": true }
+  }
+}
