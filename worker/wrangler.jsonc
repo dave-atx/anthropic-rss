@@ -15,10 +15,12 @@
     // claude-blog-rss-poller-state. Pinned so CI deploys always bind the same one.
     { "binding": "STATE", "id": "fb42897d88b949faae7a110ce84c4351" }
   ],
+  // Not GITHUB_*: Actions runners export GITHUB_WORKFLOW / GITHUB_REF, and
+  // those shadow same-named vars when the tests run in CI.
   "vars": {
-    "GITHUB_REPO": "dave-atx/anthropic-rss",
-    "GITHUB_WORKFLOW": "update-feed.yml",
-    "GITHUB_REF": "main"
+    "DISPATCH_REPO": "dave-atx/anthropic-rss",
+    "DISPATCH_WORKFLOW": "update-feed.yml",
+    "DISPATCH_REF": "main"
   },
   // GITHUB_TOKEN is a secret: `npx wrangler secret put GITHUB_TOKEN`.
   "secrets": { "required": ["GITHUB_TOKEN"] },

@@ -35,7 +35,7 @@ export function listingSlugs(html: string): string[] {
 }
 
 async function dispatchBuild(env: Env, fetchFn: typeof fetch): Promise<void> {
-	const url = `https://api.github.com/repos/${env.GITHUB_REPO}/actions/workflows/${env.GITHUB_WORKFLOW}/dispatches`;
+	const url = `https://api.github.com/repos/${env.DISPATCH_REPO}/actions/workflows/${env.DISPATCH_WORKFLOW}/dispatches`;
 	const res = await fetchFn(url, {
 		method: "POST",
 		headers: {
@@ -44,7 +44,7 @@ async function dispatchBuild(env: Env, fetchFn: typeof fetch): Promise<void> {
 			"User-Agent": USER_AGENT,
 			"X-GitHub-Api-Version": "2022-11-28",
 		},
-		body: JSON.stringify({ ref: env.GITHUB_REF }),
+		body: JSON.stringify({ ref: env.DISPATCH_REF }),
 	});
 	if (!res.ok) {
 		throw new Error(`workflow dispatch failed: ${res.status} ${await res.text()}`);
