@@ -4,6 +4,11 @@ The blog lived at claude.com/blog (Webflow) until October 2026, when it moved
 to claude.com/resources/articles (Next.js). Old /blog/<slug> URLs 308-redirect
 to the same slug under the new path, so slugs, and the tag: ids built from
 them, carry over unchanged.
+
+The listing also carries cards for posts hosted elsewhere: claude.dev/blog and
+anthropic.com (news, engineering, model launches). Several of these are old
+claude.com/blog posts that moved. They're scraped for full text too, keyed by
+the last segment of their URL, so a moved post keeps its slug and entry id.
 """
 
 import html
@@ -13,6 +18,7 @@ import re
 import time
 import xml.etree.ElementTree as ET
 from datetime import UTC, datetime
+from urllib.parse import urljoin, urlsplit
 
 import requests
 from bs4 import BeautifulSoup
@@ -27,9 +33,13 @@ USER_AGENT = "claude-blog-rss/1.0 (+https://github.com/dave-atx/anthropic-rss)"
 
 _SITEMAP_NS = {"sm": "http://www.sitemaps.org/schemas/sitemap/0.9"}
 
-# A listing card's link to an on-site article. Cards for cross-posts link off
-# site (claude.dev/blog, anthropic.com/news) and are deliberately not matched.
+# A link to an on-site article, anywhere on the listing page.
 _ARTICLE_HREF = re.compile(r"^(?:https://claude\.com)?/resources/articles/([^/?#]+)/?$")
+# An off-site post on a host we have a parser for. Only matched on listing
+# cards, since the nav and footer link to anthropic.com pages too.
+_EXTERNAL_HREF = re.compile(
+    r"^https://(?:claude\.dev/blog|(?:www\.)?anthropic\.com)/(?:[^/?#]+/)*([^/?#]+)/?$"
+)
 
 logger = logging.getLogger(__name__)
 
@@ -57,43 +67,61 @@ def get_session() -> requests.Session:
 
 
 def list_slugs(page: int = 1) -> list[tuple[str, str]]:
-    """Return [(slug, title), ...] from the listing page, deduped, in page order.
+    """Return [(slug, url), ...] from the listing page, deduped, in page order.
 
-    Raises if the page has no article links at all: the listing always has
-    some, so an empty result means the markup or URL scheme moved and the run
-    can't be trusted.
+    Raises if the page has no on-site article links at all: the listing always
+    has some, so an empty result means the markup or URL scheme moved and the
+    run can't be trusted.
     """
     url = BASE_URL if page == 1 else f"{BASE_URL}?{PAGINATION_PARAM}={page}"
     resp = get_session().get(url, timeout=30)
     resp.raise_for_status()
     results = parse_listing(resp.text)
-    if not results:
+    if not any(post_url.startswith(f"{BASE_URL}/") for _slug, post_url in results):
         raise RuntimeError(f"{url} yielded no article slugs; has the markup changed?")
     return results
 
 
-def parse_listing(html_text: str) -> list[tuple[str, str]]:
-    """Return [(slug, title), ...] for every article link in a listing page.
+_LISTING_CARD = re.compile(r"^ResourceCard-module-scss-module__\w+__card$")
 
-    The same article can appear twice (featured carousel and grid); the first
-    occurrence wins.
+
+def parse_listing(html_text: str) -> list[tuple[str, str]]:
+    """Return [(slug, url), ...] for every post linked from a listing page.
+
+    On-site articles are matched by href alone. Off-site posts are matched only
+    on listing cards, and only on hosts `fetch_post` can parse; other off-site
+    cards are logged and skipped. The same post can appear twice (featured
+    carousel and grid); the first occurrence wins.
     """
     soup = BeautifulSoup(html_text, "lxml")
     seen: set[str] = set()
     results: list[tuple[str, str]] = []
-    for link in soup.find_all("a", href=_ARTICLE_HREF):
-        slug = _ARTICLE_HREF.match(link["href"]).group(1)
-        if slug in seen:
+    for link in soup.find_all("a", href=True):
+        href = link["href"]
+        if m := _ARTICLE_HREF.match(href):
+            slug, url = m.group(1), f"{BASE_URL}/{m.group(1)}"
+        elif not any(_LISTING_CARD.match(c) for c in link.get("class", [])):
             continue
-        seen.add(slug)
-        title_el = link.find("h3")
-        results.append((slug, title_el.get_text(strip=True) if title_el else ""))
+        elif m := _EXTERNAL_HREF.match(href):
+            slug, url = m.group(1), href
+        else:
+            if href.startswith("http"):
+                logger.warning("Skipping listing card on an unsupported host: %s", href)
+            continue
+        if slug not in seen:
+            seen.add(slug)
+            results.append((slug, url))
     return results
 
 
-def fetch_post(slug: str) -> Post | None:
-    """Fetch and parse a single post. Returns None on failure."""
-    url = f"{BASE_URL}/{slug}"
+def fetch_post(slug: str, url: str | None = None) -> Post | None:
+    """Fetch and parse a single post. Returns None on failure.
+
+    `url` defaults to the on-site article. The parser is chosen from the URL
+    after redirects, so a stored claude.com/blog URL lands on the right one, and
+    the post's stored `url` is that final URL.
+    """
+    url = url or f"{BASE_URL}/{slug}"
     try:
         resp = get_session().get(url, timeout=30)
         resp.raise_for_status()
@@ -101,34 +129,186 @@ def fetch_post(slug: str) -> Post | None:
         logger.error("Failed to fetch %s: %s", url, exc)
         return None
 
-    soup = BeautifulSoup(resp.text, "lxml")
+    final_url = resp.url
+    parser = _parser_for(final_url)
+    if parser is None:
+        logger.error("No parser for %s (from %s)", final_url, url)
+        return None
+    post = parser(BeautifulSoup(resp.text, "lxml"), final_url)
+    post["slug"] = slug
+    for field in ("html_body", "pub_date"):
+        if not post[field]:
+            logger.warning("No %s for %s; has the markup changed?", field, final_url)
+    return post
 
+
+def _parser_for(url: str):
+    parts = urlsplit(url)
+    host = parts.netloc.removeprefix("www.")
+    if host == "claude.com" and parts.path.startswith("/resources/articles/"):
+        return _parse_claude_article
+    if host == "claude.dev" and parts.path.startswith("/blog/"):
+        return _parse_claude_dev
+    if host == "anthropic.com":
+        return _parse_anthropic
+    return None
+
+
+def _parse_claude_article(soup: BeautifulSoup, url: str) -> Post:
+    """A claude.com/resources/articles page."""
     title_el = soup.find("h1")
-    title = title_el.get_text(strip=True) if title_el else slug
-
     date_str = _extract_detail(soup, "Date")
     pub_date = _parse_date(date_str)
-
     json_ld = _extract_json_ld(soup)
-    categories = _extract_detail_list(soup, "Category", "Categories")
-    authors = _extract_authors(soup, json_ld)
-    summary = _extract_summary(json_ld)
-    image_url = _extract_image(soup, json_ld)
-
-    html_body = _extract_body_html(soup)
-
     return {
-        "slug": slug,
+        "slug": "",
         "url": url,
-        "title": title,
+        "title": title_el.get_text(strip=True) if title_el else "",
         "date_str": date_str or "",
         "pub_date": pub_date.isoformat() if pub_date else "",
-        "categories": categories,
-        "authors": authors,
-        "summary": summary,
-        "image_url": image_url,
-        "html_body": html_body,
+        "categories": _extract_detail_list(soup, "Category", "Categories"),
+        "authors": _extract_authors(soup, json_ld),
+        "summary": _extract_summary(json_ld),
+        "image_url": _extract_image(soup, json_ld),
+        "html_body": _extract_body_html(soup),
     }
+
+
+def _parse_claude_dev(soup: BeautifulSoup, url: str) -> Post:
+    """A claude.dev/blog post. The body is `div#body`; the category is a chip above the h1."""
+    json_ld = _extract_json_ld(soup)
+    body = soup.find("div", id="body")
+    chip = soup.find(class_="cat-chip")
+    return _external_post(
+        soup,
+        url,
+        json_ld,
+        categories=[chip.get_text(strip=True)] if chip and chip.get_text(strip=True) else [],
+        bodies=[body] if body else [],
+    )
+
+
+_ANTHROPIC_BODY = re.compile(r"^Body-module-scss-module__\w+__body$")
+_ANTHROPIC_FOOTNOTES = re.compile(r"^MooFootnotes-module-scss-module__\w+__footnotes$")
+_ANTHROPIC_SUBJECTS = re.compile(r"^PostDetail-module-scss-module__\w+__subjects$")
+
+
+def _parse_anthropic(soup: BeautifulSoup, url: str) -> Post:
+    """An anthropic.com news, engineering, or model-launch page.
+
+    All three put the body in a `Body` CSS-module div inside <article>; launch
+    pages add a footnotes section after it. Testimonial cards nest their own
+    `Body` divs, so only outermost ones are taken.
+    """
+    root = soup.find("article") or soup
+    bodies = [
+        el
+        for el in root.find_all(class_=_ANTHROPIC_BODY)
+        if not el.find_parent(class_=_ANTHROPIC_BODY)
+    ]
+    bodies += root.find_all(class_=_ANTHROPIC_FOOTNOTES)
+    subjects = soup.find(class_=_ANTHROPIC_SUBJECTS)
+    categories = (
+        [t for t in (el.get_text(strip=True) for el in subjects.find_all("span")) if t]
+        if subjects
+        else []
+    )
+    # Some launch pages show the date only as hero text, with no <time>.
+    eyebrow = soup.find("p", class_="eyebrow")
+    return _external_post(
+        soup,
+        url,
+        _extract_json_ld(soup),
+        categories=categories,
+        bodies=bodies,
+        date_text=eyebrow.get_text(strip=True) if eyebrow else "",
+    )
+
+
+def _external_post(
+    soup: BeautifulSoup,
+    url: str,
+    json_ld: dict,
+    *,
+    categories: list[str],
+    bodies: list,
+    date_text: str = "",
+) -> Post:
+    """Fields every off-site host exposes the same way: JSON-LD and OpenGraph
+    metadata, falling back to <time>, then `date_text`, and <h1>.
+
+    A page that publishes a real time of day (anthropic.com news does) gets it
+    as a precise pub_date. Midnight UTC is treated as date-only.
+    """
+    title = (
+        html.unescape(json_ld.get("headline") or "").strip()
+        or _meta(soup, "og:title")
+        or (soup.find("h1").get_text(" ", strip=True) if soup.find("h1") else "")
+    )
+    time_el = soup.find("time", datetime=True)
+    published = _parse_iso(
+        json_ld.get("datePublished")
+        or _meta(soup, "article:published_time")
+        or (time_el["datetime"] if time_el else "")
+    ) or _parse_date(date_text)
+    post: Post = {
+        "slug": "",
+        "url": url,
+        "title": title,
+        "date_str": f"{published:%B} {published.day}, {published.year}" if published else "",
+        "pub_date": published.isoformat() if published else "",
+        "categories": categories,
+        "authors": _extract_authors(soup, json_ld),
+        "summary": _extract_summary(json_ld) or _meta(soup, "og:description"),
+        "image_url": _extract_image(soup, json_ld),
+        "html_body": "".join(_clean_external_body(b, url) for b in bodies),
+    }
+    if published and published != published.replace(hour=0, minute=0, second=0):
+        post["pub_date_precise"] = True
+    return post
+
+
+def _meta(soup: BeautifulSoup, prop: str) -> str:
+    el = soup.find("meta", attrs={"property": prop})
+    return (el.get("content") or "").strip() if el else ""
+
+
+def _parse_iso(value: str) -> datetime | None:
+    """Parse an ISO date or datetime to UTC, whole seconds."""
+    if not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+    except ValueError:
+        logger.warning("Could not parse date: %r", value)
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=UTC)
+    return dt.astimezone(UTC).replace(microsecond=0)
+
+
+_URL_ATTRS = ("href", "src", "poster")
+
+
+def _clean_external_body(el, base_url: str) -> str:
+    """Make an off-site body safe to lift into a feed: drop interactive
+    controls, and make relative URLs absolute (both hosts serve images and
+    video from root-relative paths, which a feed reader would resolve against
+    the wrong site).
+    """
+    for junk in el.find_all(["button", "script", "style", "noscript", "input"]):
+        junk.decompose()
+    for tag in el.find_all(True):
+        for attr in _URL_ATTRS:
+            if tag.get(attr) and not tag[attr].startswith("#"):
+                tag[attr] = urljoin(base_url, tag[attr])
+        if tag.get("srcset"):
+            tag["srcset"] = ", ".join(
+                " ".join([urljoin(base_url, part.split()[0]), *part.split()[1:]])
+                for part in tag["srcset"].split(", ")
+                if part.strip()
+            )
+    return str(el)
 
 
 def _extract_body_html(soup: BeautifulSoup) -> str:
@@ -183,24 +363,40 @@ def _extract_detail_list(soup: BeautifulSoup, *labels: str) -> list[str]:
 
 
 def _extract_authors(soup: BeautifulSoup, json_ld: dict) -> list[str]:
-    """Author names from JSON-LD, falling back to the sidebar's Author(s) item."""
+    """Person names from JSON-LD, falling back to the sidebar's Author(s) item.
+
+    anthropic.com credits the Organization on every post; that isn't a byline.
+    """
     raw = json_ld.get("author") or []
     if isinstance(raw, dict):
         raw = [raw]
-    names = [html.unescape(a.get("name") or "").strip() for a in raw if isinstance(a, dict)]
+    names = [
+        html.unescape(a.get("name") or "").strip()
+        for a in raw
+        if isinstance(a, dict) and a.get("@type") != "Organization"
+    ]
     names = [n for n in names if n]
     return names or _extract_detail_list(soup, "Author", "Authors")
 
 
+_ARTICLE_LD_TYPES = {"BlogPosting", "NewsArticle", "Article"}
+
+
 def _extract_json_ld(soup: BeautifulSoup) -> dict:
-    """Return the BlogPosting JSON-LD block for a post, or {} if absent/invalid."""
+    """Return the article JSON-LD block for a post, or {} if absent/invalid.
+
+    It may be a top-level object or an entry in an @graph.
+    """
     for script in soup.find_all("script", type="application/ld+json"):
         try:
             data = json.loads(script.string or "")
         except json.JSONDecodeError, TypeError:
             continue
-        if isinstance(data, dict) and data.get("@type") == "BlogPosting":
-            return data
+        if not isinstance(data, dict):
+            continue
+        for item in data.get("@graph") or [data]:
+            if isinstance(item, dict) and item.get("@type") in _ARTICLE_LD_TYPES:
+                return item
     return {}
 
 
@@ -290,7 +486,7 @@ def fetch_sitemap_lastmods() -> dict[str, datetime]:
 
 
 def scrape_all_pages(max_pages: int = 40, delay: float = REQUEST_DELAY) -> list[tuple[str, str]]:
-    """Walk listing pages and return unique (slug, title) pairs.
+    """Walk listing pages and return unique (slug, url) pairs.
 
     `?page=N` is cumulative ("load more"): it renders every card up to page N,
     and past the end it keeps rendering the full list. So stop at the first
@@ -300,8 +496,8 @@ def scrape_all_pages(max_pages: int = 40, delay: float = REQUEST_DELAY) -> list[
     for page in range(1, max_pages + 1):
         logger.info("Fetching listing page %d", page)
         before = len(all_slugs)
-        for slug, title in list_slugs(page):
-            all_slugs.setdefault(slug, title)
+        for slug, url in list_slugs(page):
+            all_slugs.setdefault(slug, url)
         if len(all_slugs) == before:
             logger.info("Page %d added no new slugs, stopping.", page)
             break

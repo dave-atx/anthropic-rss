@@ -204,6 +204,10 @@ def _preserve_pub_times(posts: dict[str, Post], refetched: dict[str, Post]) -> N
             post["pub_date"] = old["pub_date"]
             post["pub_date_precise"] = True
             continue
+        if post.get("pub_date_precise"):
+            # The page itself gave a real time (some off-site hosts do); that
+            # beats a discovery time.
+            continue
         old_date = _parse_stored_date(old.get("pub_date"))
         new_date = _parse_stored_date(post.get("pub_date"))
         if old_date and new_date and old_date.date() == new_date.date():
@@ -213,10 +217,11 @@ def _preserve_pub_times(posts: dict[str, Post], refetched: dict[str, Post]) -> N
 def fetch_new_posts(
     new_slugs: list[tuple[str, str]], delay: float = REQUEST_DELAY
 ) -> dict[str, Post]:
+    """Fetch each (slug, url) pair; posts that fail are logged and left out."""
     fetched: dict[str, Post] = {}
-    for i, (slug, _title) in enumerate(new_slugs):
+    for i, (slug, url) in enumerate(new_slugs):
         logger.info("Fetching post %d/%d: %s", i + 1, len(new_slugs), slug)
-        post = fetch_post(slug)
+        post = fetch_post(slug, url)
         if post:
             fetched[slug] = post
         if i < len(new_slugs) - 1:
@@ -250,12 +255,13 @@ def main() -> None:
                 time.sleep(REQUEST_DELAY)
 
     if args.refresh:
-        discovered_slugs = {slug for slug, _title in listing}
-        all_slugs = set(posts) | discovered_slugs
-        new_slugs = [(slug, "") for slug in all_slugs]
+        # A listed post is fetched from where the listing points now; anything
+        # else from its stored URL (old claude.com/blog URLs redirect).
+        urls = {slug: post["url"] for slug, post in posts.items()} | dict(listing)
+        new_slugs = list(urls.items())
         logger.info("Refreshing all %d known posts (plus any newly discovered)", len(new_slugs))
     else:
-        new_slugs = [(slug, title) for slug, title in listing if slug not in posts]
+        new_slugs = [(slug, url) for slug, url in listing if slug not in posts]
         logger.info("New posts to fetch: %d", len(new_slugs))
 
     if new_slugs:

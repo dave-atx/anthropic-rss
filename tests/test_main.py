@@ -113,6 +113,17 @@ def test_preserve_pub_times_drops_discovery_time_when_page_date_changes():
     assert refetched["a"]["pub_date"] == "2026-08-05T00:00:00+00:00"
 
 
+def test_preserve_pub_times_prefers_a_page_time_over_a_discovery_time():
+    """An off-site page that publishes a real time beats the time we first saw it."""
+    posts = {"a": _post("2026-10-06T19:40:00+00:00")}
+    refetched = {"a": _post("2026-10-06T19:00:00+00:00", precise=True)}
+
+    _preserve_pub_times(posts, refetched)
+
+    assert refetched["a"]["pub_date"] == "2026-10-06T19:00:00+00:00"
+    assert refetched["a"]["pub_date_precise"] is True
+
+
 # ── discovery-time stamping ───────────────────────────────────────────────────
 
 

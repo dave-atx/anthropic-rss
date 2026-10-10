@@ -6,10 +6,15 @@ import { listingSlugs, poll } from "../src/index";
 // What scrape.list_slugs returns for the same fixture, in order.
 const FIXTURE_SLUGS = [
 	"dashboards-and-motion",
+	"building-effective-agent-automations",
 	"how-block-orchestrates-claude-fable-across-thousands-of-pull-requests",
+	"claude-haiku-5-5",
+	"automating-eval-design-and-hillclimbing",
 	"how-comcast-booz-allen-use-claude-mythos-to-secure-their-codebases",
 	"claude-now-works-in-google-docs-sheets-and-slides",
 	"were-expanding-the-claude-startups-program-to-help-founders-build",
+	"cyber-verification-program",
+	"claude-code-in-the-cloud",
 	"how-cresta-turned-cx-expertise-into-an-agent-builder-on-the-claude-agent-sdk",
 ];
 
@@ -41,16 +46,20 @@ describe("listingSlugs", () => {
 		expect(listingSlugs(listingHtml)).toEqual(FIXTURE_SLUGS);
 	});
 
-	it("ignores off-site, index, nested, and localized links", () => {
+	it("matches off-site posts only on cards and known hosts", () => {
+		const card = 'class="ResourceCard-module-scss-module__q33Tuq__card"';
 		const html = `
 			<a href="/resources/articles">All articles</a>
-			<a href="https://claude.dev/blog/cross-post/">x</a>
-			<a class="card" href="/resources/articles/real-post"><h3>Real</h3></a>
-			<a href="/resources/articles/real-post">dup</a>
+			<a href="https://www.anthropic.com/news/in-the-nav">x</a>
+			<a ${card} href="https://claude.dev/blog/cross-post/">x</a>
+			<a ${card} href="https://www.anthropic.com/engineering/eng-post">x</a>
+			<a ${card} href="https://example.com/blog/elsewhere">x</a>
+			<a href="/resources/articles/real-post">x</a>
+			<a ${card} href="/resources/articles/real-post">dup</a>
 			<a href="https://claude.com/resources/articles/absolute-post/">x</a>
 			<a href="/resources/articles/category/news">x</a>
 			<a href="/ja/resources/articles/localized">x</a>`;
-		expect(listingSlugs(html)).toEqual(["real-post", "absolute-post"]);
+		expect(listingSlugs(html)).toEqual(["cross-post", "eng-post", "real-post", "absolute-post"]);
 	});
 });
 

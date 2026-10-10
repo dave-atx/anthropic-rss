@@ -6,6 +6,11 @@ on:
     # Cloudflare Worker in worker/, which dispatches this workflow directly.
     - cron: "23 */6 * * *"
   workflow_dispatch:        # manual trigger and the Worker's dispatch; always deploys
+    inputs:
+      backfill:
+        description: "Walk every listing page, not just the first (finds older posts)"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -44,7 +49,7 @@ jobs:
           restore-keys: posts-state-
 
       - name: Run feed update
-        run: uv run update-feed
+        run: uv run update-feed ${{ inputs.backfill && '--backfill' || '' }}
 
       # Rendering is byte-deterministic, so a digest of docs/ identifies what
       # would be deployed. The state cache is keyed on it: an existing key

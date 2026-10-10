@@ -5,12 +5,12 @@ with per-year archives under RFC 5005. Python 3.14, managed with `uv`.
 
 ## Orientation
 
-Six modules in `claude_blog_rss/`, ~850 LOC total. Read them in this order:
+Six modules in `claude_blog_rss/`, ~1,300 lines total. Read them in this order:
 
 | File | Role |
 |---|---|
 | `models.py` | `Post` TypedDict — the stored schema. **Start here**; it documents every field. |
-| `scrape.py` | HTTP + HTML parsing. Listing pages, post pages, sitemap. |
+| `scrape.py` | HTTP + HTML parsing. Listing pages, post pages (one parser per host), sitemap. |
 | `jsonfeed.py` | `Post` ⇄ JSON Feed 1.1. This is the **state layer**, not just an output format. |
 | `archives.py` | Decides which posts go in which published document (year buckets). |
 | `feed.py` | Turns `Post` dicts into Atom XML via `feedgen`, including RFC 5005 archives. |
@@ -23,7 +23,7 @@ Data flows one direction: `scrape` → `main` → `{jsonfeed, archives, feed}`. 
 
 ```bash
 uv sync --group dev
-uv run pytest -q          # 91 tests, all offline (HTML fixtures, no network)
+uv run pytest -q          # 102 tests, all offline (HTML fixtures, no network)
 uv run ruff check .
 uv run ruff format .
 uv run update-feed        # real run — hits the network
@@ -40,10 +40,20 @@ push and PR. Both must be clean before you're done.
 `claude.com/blog`; it is now Next.js at `claude.com/resources/articles`, and every `/blog/<slug>`
 308-redirects to the same slug there. Posts stored before the move keep their `/blog/` `url`
 (it still resolves); new ones get the new path. Slugs, and therefore entry IDs, carried over.
-The listing is matched by `href` alone (`/resources/articles/<slug>`), so it survives markup
-churn; listing cards that link off site (`claude.dev/blog`, `anthropic.com/news` cross-posts) are
-deliberately skipped. Both `list_slugs` and the Worker *raise* on a listing with no article links —
-that means the site moved, and the old code silently reported "no new posts" for days.
+On-site articles are matched by `href` alone (`/resources/articles/<slug>`), so they survive
+markup churn. Both `list_slugs` and the Worker *raise* on a listing with no article links — that
+means the site moved, and the old code silently reported "no new posts" for days.
+
+**Some listing cards are posts on other hosts**, scraped for full text like the rest:
+`claude.dev/blog` and `anthropic.com` (news, engineering, model-launch pages). These are matched
+only on listing cards (`ResourceCard…__card`), because the nav links to anthropic.com too, and
+only on hosts with a parser; any other off-site card is logged and skipped. Their slug is the URL's
+last path segment, which is deliberate: several are old `claude.com/blog` posts that moved to
+claude.dev, and keeping the slug keeps their entry id, so they don't re-appear as new.
+`fetch_post` picks the parser from the URL *after redirects* and stores that final URL. Off-site
+bodies go through `_clean_external_body`, which drops buttons and makes root-relative `src`/`href`
+absolute; on-site bodies don't need it and are stored as served. anthropic.com news pages carry a
+real publish time, which is stored with `pub_date_precise`.
 
 **Post pages use CSS-module class names with build hashes**, e.g.
 `DetailSidebar-module-scss-module__3RcHtG__label`. The hash changes on redeploys, so
@@ -63,9 +73,13 @@ far; keep the concatenation.
 
 **Listing pagination is cumulative.** `?page=N` renders every card up to page N, and past the end
 it keeps rendering the full list instead of an empty page. `scrape_all_pages` therefore stops at the
-first page that adds no new slug.
+first page that adds no new slug. The hourly run reads page 1 only; to pick up older posts, run the
+`Update feeds` workflow by hand with `backfill` ticked (or `uv run update-feed --backfill` locally,
+committing any closed-year archive it changes).
 
-**`pub_date` precision is a three-stage thing.** `fetch_post` only reads the page's Date
+**`pub_date` precision is a three-stage thing** (plus a shortcut: an off-site page with a real
+publish time sets it, precise, in `fetch_post`, and `_preserve_pub_times` lets that win over a
+discovery time). `fetch_post` only reads the page's Date
 field, giving midnight UTC — which readers show as the previous evening in US time zones.
 `stamp_discovery_times` replaces that on a *newly discovered* post with the time the run first saw
 it, if that is still the same UTC day (the Worker dispatches a run within ~10 minutes of a post appearing). `enrich_pub_dates`
@@ -119,7 +133,7 @@ whose 10 ms CPU cap per invocation is why it's TypeScript with a regex scan rath
 code (HTMLRewriter took ~14 ms on the ~800 KB Webflow listing; the regex scan ~3 ms). Every 10 minutes it
 reads listing page 1, compares slugs with the set stored in KV, and on a new one calls
 `workflow_dispatch` on `update-feed.yml`. KV is written only after a successful dispatch, so failures
-retry next tick. Its link matching mirrors `scrape.parse_listing` — change one, change both;
+retry next tick. Its link and card matching mirrors `scrape.parse_listing` — change one, change both;
 `worker/test/index.spec.ts` checks both agree on `tests/fixtures/articles_listing.html`. The workflow's
 own cron is a 6-hourly backstop, so a broken Worker degrades latency, not correctness.
 

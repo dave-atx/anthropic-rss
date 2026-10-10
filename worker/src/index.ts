@@ -11,13 +11,33 @@ const LISTING_URL = "https://claude.com/resources/articles";
 const USER_AGENT = "claude-blog-rss/1.0 (+https://github.com/dave-atx/anthropic-rss)";
 const KNOWN_KEY = "listing-slugs";
 
-// Mirrors scrape.parse_listing: every link to /resources/articles/<slug>
-// (relative or absolute), deduped in page order. Cross-post cards that link
-// off site (claude.dev/blog, anthropic.com/news) are deliberately not matched.
-const ARTICLE_LINK = /<a\b[^>]*\shref="(?:https:\/\/claude\.com)?\/resources\/articles\/([^"/?#]+)\/?"/g;
+// Mirrors scrape.parse_listing: a link to /resources/articles/<slug> anywhere,
+// plus listing cards (class ResourceCard-module-scss-module__<hash>__card) that
+// link off site to claude.dev/blog or anthropic.com, keyed by the URL's last
+// segment. Deduped in page order.
+const ANCHOR = /<a\b[^>]*>/g;
+const HREF = /\shref="([^"]*)"/;
+const CLASS = /\sclass="([^"]*)"/;
+const ARTICLE_HREF = /^(?:https:\/\/claude\.com)?\/resources\/articles\/([^/?#]+)\/?$/;
+const EXTERNAL_HREF =
+	/^https:\/\/(?:claude\.dev\/blog|(?:www\.)?anthropic\.com)\/(?:[^/?#]+\/)*([^/?#]+)\/?$/;
+const LISTING_CARD = /(?:^|\s)ResourceCard-module-scss-module__\w+__card(?:\s|$)/;
 
 export function listingSlugs(html: string): string[] {
-	return [...new Set(Array.from(html.matchAll(ARTICLE_LINK), (m) => m[1]))];
+	const slugs = new Set<string>();
+	for (const [tag] of html.matchAll(ANCHOR)) {
+		const href = HREF.exec(tag)?.[1];
+		if (!href) continue;
+		const onSite = ARTICLE_HREF.exec(href);
+		if (onSite) {
+			slugs.add(onSite[1]);
+			continue;
+		}
+		if (!LISTING_CARD.test(CLASS.exec(tag)?.[1] ?? "")) continue;
+		const offSite = EXTERNAL_HREF.exec(href);
+		if (offSite) slugs.add(offSite[1]);
+	}
+	return [...slugs];
 }
 
 async function dispatchBuild(env: Env, fetchFn: typeof fetch): Promise<void> {

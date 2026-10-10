@@ -6,6 +6,7 @@ import pytest
 from bs4 import BeautifulSoup
 
 from claude_blog_rss.scrape import (
+    _clean_external_body,
     _extract_authors,
     _extract_body_html,
     _extract_detail,
@@ -13,12 +14,21 @@ from claude_blog_rss.scrape import (
     _extract_image,
     _extract_json_ld,
     _extract_summary,
+    _parse_anthropic,
+    _parse_claude_article,
+    _parse_claude_dev,
     _parse_date,
     _parse_sitemap,
+    _parser_for,
     parse_listing,
 )
 
 FIXTURES = Path(__file__).parent / "fixtures"
+ARTICLES = "https://claude.com/resources/articles"
+
+
+def fixture_soup(name: str) -> BeautifulSoup:
+    return BeautifulSoup((FIXTURES / name).read_text(), "lxml")
 
 
 def listing_html() -> str:
@@ -38,36 +48,83 @@ def post_with_author_html() -> str:
 # ── listing page ──────────────────────────────────────────────────────────────
 
 
-def test_listing_finds_on_site_articles_in_page_order():
-    slugs = [slug for slug, _title in parse_listing(listing_html())]
-    assert slugs == [
-        "dashboards-and-motion",
-        "how-block-orchestrates-claude-fable-across-thousands-of-pull-requests",
-        "how-comcast-booz-allen-use-claude-mythos-to-secure-their-codebases",
-        "claude-now-works-in-google-docs-sheets-and-slides",
-        "were-expanding-the-claude-startups-program-to-help-founders-build",
-        "how-cresta-turned-cx-expertise-into-an-agent-builder-on-the-claude-agent-sdk",
+def test_listing_finds_posts_in_page_order():
+    assert parse_listing(listing_html()) == [
+        ("dashboards-and-motion", f"{ARTICLES}/dashboards-and-motion"),
+        (
+            "building-effective-agent-automations",
+            "https://claude.dev/blog/building-effective-agent-automations/",
+        ),
+        (
+            "how-block-orchestrates-claude-fable-across-thousands-of-pull-requests",
+            f"{ARTICLES}/how-block-orchestrates-claude-fable-across-thousands-of-pull-requests",
+        ),
+        ("claude-haiku-5-5", "https://www.anthropic.com/claude-haiku-5-5"),
+        (
+            "automating-eval-design-and-hillclimbing",
+            "https://claude.dev/blog/automating-eval-design-and-hillclimbing/",
+        ),
+        (
+            "how-comcast-booz-allen-use-claude-mythos-to-secure-their-codebases",
+            f"{ARTICLES}/how-comcast-booz-allen-use-claude-mythos-to-secure-their-codebases",
+        ),
+        (
+            "claude-now-works-in-google-docs-sheets-and-slides",
+            f"{ARTICLES}/claude-now-works-in-google-docs-sheets-and-slides",
+        ),
+        (
+            "were-expanding-the-claude-startups-program-to-help-founders-build",
+            f"{ARTICLES}/were-expanding-the-claude-startups-program-to-help-founders-build",
+        ),
+        (
+            "cyber-verification-program",
+            "https://www.anthropic.com/news/cyber-verification-program",
+        ),
+        ("claude-code-in-the-cloud", "https://claude.dev/blog/claude-code-in-the-cloud/"),
+        (
+            "how-cresta-turned-cx-expertise-into-an-agent-builder-on-the-claude-agent-sdk",
+            f"{ARTICLES}/how-cresta-turned-cx-expertise-into-an-agent-builder-on-the-claude-agent-sdk",
+        ),
     ]
 
 
-def test_listing_extracts_card_titles():
-    titles = dict(parse_listing(listing_html()))
-    assert titles["claude-now-works-in-google-docs-sheets-and-slides"] == (
-        "Claude now works with Google Docs, Sheets, and Slides"
-    )
+CARD = 'class="ResourceCard-module-scss-module__q33Tuq__card"'
 
 
-def test_listing_ignores_off_site_index_and_nested_links():
-    html = """
+def test_listing_matches_off_site_posts_only_on_cards_and_known_hosts():
+    html = f"""
         <a href="/resources/articles">All articles</a>
-        <a href="https://claude.dev/blog/cross-post/">x</a>
-        <a href="/resources/articles/real-post"><h3>Real</h3></a>
-        <a href="/resources/articles/real-post">dup</a>
+        <a href="https://www.anthropic.com/news/in-the-nav">x</a>
+        <a {CARD} href="https://claude.dev/blog/cross-post/">x</a>
+        <a {CARD} href="https://www.anthropic.com/engineering/eng-post">x</a>
+        <a {CARD} href="https://example.com/blog/elsewhere">x</a>
+        <a href="/resources/articles/real-post">x</a>
+        <a {CARD} href="/resources/articles/real-post">dup</a>
         <a href="https://claude.com/resources/articles/absolute-post/">x</a>
         <a href="/resources/articles/category/news">x</a>
         <a href="/ja/resources/articles/localized">x</a>
     """
-    assert parse_listing(html) == [("real-post", "Real"), ("absolute-post", "")]
+    assert [slug for slug, _url in parse_listing(html)] == [
+        "cross-post",
+        "eng-post",
+        "real-post",
+        "absolute-post",
+    ]
+
+
+@pytest.mark.parametrize(
+    "url,parser",
+    [
+        (f"{ARTICLES}/x", _parse_claude_article),
+        ("https://claude.dev/blog/x/", _parse_claude_dev),
+        ("https://www.anthropic.com/news/x", _parse_anthropic),
+        ("https://www.anthropic.com/claude-haiku-5-5", _parse_anthropic),
+        ("https://claude.com/customers/x", None),
+        ("https://claude.dev/docs/x", None),
+    ],
+)
+def test_parser_is_chosen_by_final_url(url, parser):
+    assert _parser_for(url) is parser
 
 
 # ── post detail page ──────────────────────────────────────────────────────────
@@ -174,6 +231,76 @@ def test_post_image_skips_empty_og_placeholder():
     assert _extract_image(soup, {}) == "https://x/y.png"
 
 
+# ── off-site posts ────────────────────────────────────────────────────────────
+
+
+def test_claude_dev_post():
+    url = "https://claude.dev/blog/claude-code-in-the-cloud/"
+    post = _parse_claude_dev(fixture_soup("claude_dev_post.html"), url)
+    body = post.pop("html_body")
+    assert post == {
+        "slug": "",
+        "url": url,
+        "title": "Claude Code in the cloud: a field guide to cloud sessions",
+        "date_str": "October 6, 2026",
+        "pub_date": "2026-10-06T00:00:00+00:00",
+        "categories": ["Playbooks"],
+        "authors": ["Addy Osmani"],
+        "summary": (
+            "Cloud sessions run Claude Code on a fresh VM for each task. Four real sessions, "
+            "seven workflows that suit them, and how to connect GitHub without getting stuck."
+        ),
+        "image_url": "https://claude.dev/blog/claude-code-in-the-cloud/og.png",
+    }
+    assert body.startswith('<div class="prose" id="body">')
+    assert "You probably run Claude Code in a terminal" in body
+    assert "<button" not in body
+    assert 'src="https://claude.dev/media/' in body
+    assert 'src="/' not in body and 'poster="/' not in body
+
+
+def test_anthropic_news_post_has_a_precise_time_and_no_org_byline():
+    url = "https://www.anthropic.com/news/cyber-verification-program"
+    post = _parse_anthropic(fixture_soup("anthropic_news_post.html"), url)
+    assert post["title"] == "Expanding the Cyber Verification Program"
+    assert post["pub_date"] == "2026-10-06T19:00:00+00:00"
+    assert post["pub_date_precise"] is True
+    assert post["date_str"] == "October 6, 2026"
+    assert post["categories"] == ["Announcements"]
+    assert post["authors"] == []
+    assert post["html_body"].count("launching a new, expanded version") == 1
+    assert "Related content" not in post["html_body"]
+    assert 'src="https://www.anthropic.com/_next/image?' in post["html_body"]
+
+
+def test_anthropic_launch_page_takes_outer_body_and_footnotes():
+    url = "https://www.anthropic.com/claude-haiku-5-5"
+    post = _parse_anthropic(fixture_soup("anthropic_launch_page.html"), url)
+    body = post["html_body"]
+    assert post["title"] == "Introducing Claude Haiku 5.5"
+    assert post["pub_date"] == "2026-10-07T00:00:00+00:00"
+    assert "pub_date_precise" not in post
+    # Testimonial cards nest their own Body divs; taking those too would repeat text.
+    assert body.count("Introducing Claude Haiku 5.5: the cheapest") == 1
+    assert "MooFootnotes" in body and body.index("Introducing") < body.index("MooFootnotes")
+    assert "<button" not in body
+
+
+def test_clean_external_body_absolutizes_urls():
+    soup = BeautifulSoup(
+        '<div><a href="#s1">x</a><a href="/docs">x</a><img src="/m.png" '
+        'srcset="/a.png 1x, /b.png 2x"><video poster="/p.png"></video><button>Copy</button></div>',
+        "lxml",
+    )
+    html = _clean_external_body(soup.div, "https://claude.dev/blog/post/")
+    assert html == (
+        '<div><a href="#s1">x</a><a href="https://claude.dev/docs">x</a>'
+        '<img src="https://claude.dev/m.png" '
+        'srcset="https://claude.dev/a.png 1x, https://claude.dev/b.png 2x"/>'
+        '<video poster="https://claude.dev/p.png"></video></div>'
+    )
+
+
 # ── date parser ───────────────────────────────────────────────────────────────
 
 
@@ -227,3 +354,16 @@ def test_parse_sitemap_parses_timestamps():
 
 def test_parse_sitemap_handles_invalid_xml():
     assert _parse_sitemap(b"not xml") == {}
+
+
+def test_anthropic_page_falls_back_to_eyebrow_date():
+    """Some launch pages have no JSON-LD, no published_time, and no <time>."""
+    soup = BeautifulSoup(
+        '<p class="eyebrow">September 28, 2026</p><article>'
+        '<div class="Body-module-scss-module__z40yvW__body"><p>Hi</p></div></article>',
+        "lxml",
+    )
+    post = _parse_anthropic(soup, "https://www.anthropic.com/claude-sonnet-5-5")
+    assert post["pub_date"] == "2026-09-28T00:00:00+00:00"
+    assert post["date_str"] == "September 28, 2026"
+    assert post["html_body"] == '<div class="Body-module-scss-module__z40yvW__body"><p>Hi</p></div>'
