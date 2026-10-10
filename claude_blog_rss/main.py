@@ -236,9 +236,10 @@ def main() -> None:
     )
     parser.add_argument(
         "--refresh",
-        action="store_true",
-        help="Re-fetch every already-known post too, overwriting its stored data "
-        "(use after a scraper change to backfill new fields onto old posts)",
+        nargs="*",
+        metavar="SLUG",
+        help="Re-fetch already-known posts too, overwriting their stored data: the given "
+        "slugs, or every post if none are given (use after a scraper change)",
     )
     args = parser.parse_args()
 
@@ -254,12 +255,15 @@ def main() -> None:
             if page < LISTING_PAGES:
                 time.sleep(REQUEST_DELAY)
 
-    if args.refresh:
+    if args.refresh is not None:
         # A listed post is fetched from where the listing points now; anything
         # else from its stored URL (old claude.com/blog URLs redirect).
         urls = {slug: post["url"] for slug, post in posts.items()} | dict(listing)
-        new_slugs = list(urls.items())
-        logger.info("Refreshing all %d known posts (plus any newly discovered)", len(new_slugs))
+        targets = set(args.refresh) or set(urls)
+        for slug in sorted(targets - set(urls)):
+            logger.warning("Can't refresh unknown slug %r", slug)
+        new_slugs = [(s, u) for s, u in urls.items() if s in targets or s not in posts]
+        logger.info("Refreshing %d post(s), including any newly discovered", len(new_slugs))
     else:
         new_slugs = [(slug, url) for slug, url in listing if slug not in posts]
         logger.info("New posts to fetch: %d", len(new_slugs))

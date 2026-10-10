@@ -284,6 +284,35 @@ def test_anthropic_launch_page_takes_outer_body_and_footnotes():
     assert body.count("Introducing Claude Haiku 5.5: the cheapest") == 1
     assert "MooFootnotes" in body and body.index("Introducing") < body.index("MooFootnotes")
     assert "<button" not in body
+    # Four benchmark charts, each now a link; the tab icons are just dropped.
+    assert "<svg" not in body
+    assert body.count(f'<p><a href="{url}">View this chart on anthropic.com</a></p>') == 4
+
+
+def test_svg_figures_become_links_and_decoration_is_dropped():
+    soup = BeautifulSoup(
+        "<div>"
+        '<figure><div role="img" aria-label="Score rises with effort.">'
+        '<svg aria-hidden="true" class="wide"><text>1</text></svg>'
+        '<svg aria-hidden="true" class="narrow"><text>1</text></svg></div>'
+        "<figcaption>Fig 1</figcaption></figure>"
+        '<figure><svg aria-label="OSWorld"><text>72%</text></svg></figure>'
+        '<p><span aria-hidden="true"><svg><circle r="1"/></svg></span>Claude</p>'
+        '<p><svg aria-hidden="true"><path d=""/></svg>icon</p>'
+        "</div>",
+        "lxml",
+    )
+    html = _clean_external_body(soup.div, "https://claude.dev/blog/post/")
+    assert html == (
+        "<div>"
+        '<figure><p><em>Score rises with effort.</em> <a href="https://claude.dev/blog/post/">'
+        "View this chart on claude.dev</a></p><figcaption>Fig 1</figcaption></figure>"
+        '<figure><p><a href="https://claude.dev/blog/post/">View this chart on claude.dev</a></p>'
+        "</figure>"
+        '<p><span aria-hidden="true"></span>Claude</p>'
+        "<p>icon</p>"
+        "</div>"
+    )
 
 
 def test_clean_external_body_absolutizes_urls():

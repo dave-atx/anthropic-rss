@@ -134,7 +134,9 @@ def fetch_post(slug: str, url: str | None = None) -> Post | None:
     if parser is None:
         logger.error("No parser for %s (from %s)", final_url, url)
         return None
-    post = parser(BeautifulSoup(resp.text, "lxml"), final_url)
+    # Bytes, not resp.text: claude.dev sends no charset header, and requests
+    # then assumes Latin-1. Given bytes, the parser honors <meta charset>.
+    post = parser(BeautifulSoup(resp.content, "lxml"), final_url)
     post["slug"] = slug
     for field in ("html_body", "pub_date"):
         if not post[field]:
@@ -292,12 +294,13 @@ _URL_ATTRS = ("href", "src", "poster")
 
 def _clean_external_body(el, base_url: str) -> str:
     """Make an off-site body safe to lift into a feed: drop interactive
-    controls, and make relative URLs absolute (both hosts serve images and
-    video from root-relative paths, which a feed reader would resolve against
-    the wrong site).
+    controls, swap inline SVG figures for a link, and make relative URLs
+    absolute (both hosts serve images and video from root-relative paths,
+    which a feed reader would resolve against the wrong site).
     """
     for junk in el.find_all(["button", "script", "style", "noscript", "input"]):
         junk.decompose()
+    _replace_svg_figures(el, base_url)
     for tag in el.find_all(True):
         for attr in _URL_ATTRS:
             if tag.get(attr) and not tag[attr].startswith("#"):
@@ -309,6 +312,43 @@ def _clean_external_body(el, base_url: str) -> str:
                 if part.strip()
             )
     return str(el)
+
+
+def _replace_svg_figures(el, base_url: str) -> None:
+    """Replace each inline SVG chart or diagram with a link to the original.
+
+    Feed readers sanitize SVG away (Miniflux drops the tags and keeps their
+    text, leaving stray axis labels), and these charts are styled by the
+    site's stylesheet, so they wouldn't render standalone anyway. A chart's
+    drawing is the SVG itself, or the `role="img"` wrapper claude.dev puts
+    around it; that wrapper's aria-label is a prose description of the chart,
+    which is kept. Any other SVG (icons, avatars, anything hidden from screen
+    readers without such a wrapper) is decoration and just removed.
+    """
+    host = urlsplit(base_url).netloc.removeprefix("www.")
+    for svg in el.find_all("svg"):
+        if svg.decomposed or el not in svg.parents:
+            continue  # inside a drawing already replaced
+        drawing = svg.find_parent(attrs={"role": "img", "aria-label": True})
+        if drawing is None and (
+            svg.get("aria-hidden") == "true" or svg.find_parent(attrs={"aria-hidden": "true"})
+        ):
+            svg.decompose()
+            continue
+        drawing = drawing or svg
+        placeholder = _FRAGMENT.new_tag("p")
+        if drawing is not svg:
+            description = _FRAGMENT.new_tag("em")
+            description.string = drawing["aria-label"].strip()
+            placeholder.append(description)
+            placeholder.append(" ")
+        link = _FRAGMENT.new_tag("a", href=base_url)
+        link.string = f"View this chart on {host}"
+        placeholder.append(link)
+        drawing.replace_with(placeholder)
+
+
+_FRAGMENT = BeautifulSoup("", "lxml")
 
 
 def _extract_body_html(soup: BeautifulSoup) -> str:

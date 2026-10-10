@@ -11,6 +11,10 @@ on:
         description: "Walk every listing page, not just the first (finds older posts)"
         type: boolean
         default: false
+      refresh:
+        description: "Space-separated slugs to re-fetch, overwriting stored data ('all' for every post)"
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -49,7 +53,16 @@ jobs:
           restore-keys: posts-state-
 
       - name: Run feed update
-        run: uv run update-feed ${{ inputs.backfill && '--backfill' || '' }}
+        env:
+          BACKFILL: ${{ inputs.backfill && '--backfill' || '' }}
+          REFRESH: ${{ inputs.refresh }}
+        # REFRESH goes through env, not ${{ }}, so it can't inject shell.
+        run: |
+          set -f  # slugs are split on spaces below; never glob them
+          if [ "$REFRESH" = all ]; then set -- --refresh
+          elif [ -n "$REFRESH" ]; then set -- --refresh $REFRESH
+          fi
+          uv run update-feed $BACKFILL "$@"
 
       # Rendering is byte-deterministic, so a digest of docs/ identifies what
       # would be deployed. The state cache is keyed on it: an existing key

@@ -23,12 +23,13 @@ Data flows one direction: `scrape` → `main` → `{jsonfeed, archives, feed}`. 
 
 ```bash
 uv sync --group dev
-uv run pytest -q          # 102 tests, all offline (HTML fixtures, no network)
+uv run pytest -q          # 103 tests, all offline (HTML fixtures, no network)
 uv run ruff check .
 uv run ruff format .
 uv run update-feed        # real run — hits the network
 uv run update-feed --backfill   # all historical posts
-uv run update-feed --refresh    # re-fetch known posts, overwriting stored data
+uv run update-feed --refresh    # re-fetch all known posts, overwriting stored data
+uv run update-feed --refresh SLUG...   # re-fetch just these
 ```
 
 CI (`.github/workflows/ci.yml`) runs `ruff check`, `ruff format --check`, and `pytest` on
@@ -50,9 +51,13 @@ only on listing cards (`ResourceCard…__card`), because the nav links to anthro
 only on hosts with a parser; any other off-site card is logged and skipped. Their slug is the URL's
 last path segment, which is deliberate: several are old `claude.com/blog` posts that moved to
 claude.dev, and keeping the slug keeps their entry id, so they don't re-appear as new.
-`fetch_post` picks the parser from the URL *after redirects* and stores that final URL. Off-site
-bodies go through `_clean_external_body`, which drops buttons and makes root-relative `src`/`href`
-absolute; on-site bodies don't need it and are stored as served. anthropic.com news pages carry a
+`fetch_post` picks the parser from the URL *after redirects* and stores that final URL. It parses
+`resp.content`, not `resp.text`: claude.dev sends no charset header, `requests` then assumes
+Latin-1, and every curly quote came out garbled. Off-site bodies go through `_clean_external_body`,
+which drops buttons, makes root-relative `src`/`href` absolute, and replaces inline SVG charts with
+a link to the original (keeping claude.dev's `aria-label` description). Feed readers strip SVG —
+Miniflux drops the tags and leaves the axis labels as stray text — and these charts are styled by
+the site's CSS, so they wouldn't render standalone anyway. On-site bodies are stored as served. anthropic.com news pages carry a
 real publish time, which is stored with `pub_date_precise`.
 
 **Post pages use CSS-module class names with build hashes**, e.g.
@@ -75,7 +80,9 @@ far; keep the concatenation.
 it keeps rendering the full list instead of an empty page. `scrape_all_pages` therefore stops at the
 first page that adds no new slug. The hourly run reads page 1 only; to pick up older posts, run the
 `Update feeds` workflow by hand with `backfill` ticked (or `uv run update-feed --backfill` locally,
-committing any closed-year archive it changes).
+committing any closed-year archive it changes). After a parser change, the workflow's `refresh`
+input re-fetches specific slugs (or `all`); prefer slugs, since a full refresh also rewrites every
+pre-move post's URL and categories.
 
 **`pub_date` precision is a three-stage thing** (plus a shortcut: an off-site page with a real
 publish time sets it, precise, in `fetch_post`, and `_preserve_pub_times` lets that win over a
