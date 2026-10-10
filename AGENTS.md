@@ -1,6 +1,6 @@
 # claude-blog-rss
 
-Scrapes `claude.com/blog` and publishes it as Atom 1.0 + JSON Feed 1.1 via GitHub Pages,
+Scrapes `claude.com/resources/articles` (formerly `claude.com/blog`) and publishes it as Atom 1.0 + JSON Feed 1.1 via GitHub Pages,
 with per-year archives under RFC 5005. Python 3.14, managed with `uv`.
 
 ## Orientation
@@ -23,7 +23,7 @@ Data flows one direction: `scrape` → `main` → `{jsonfeed, archives, feed}`. 
 
 ```bash
 uv sync --group dev
-uv run pytest -q          # 88 tests, all offline (HTML fixtures, no network)
+uv run pytest -q          # 91 tests, all offline (HTML fixtures, no network)
 uv run ruff check .
 uv run ruff format .
 uv run update-feed        # real run — hits the network
@@ -36,28 +36,43 @@ push and PR. Both must be clean before you're done.
 
 ## Things that will bite you
 
-**The scraper targets Webflow-generated markup.** Selectors key off Webflow's class names
-(`blog_post_content_wrap`, `hero_blog_post_details_item`, `u-rich-text-blog`). These are
-generated and can change without notice — a silent empty result usually means the site
-changed, not that the code is wrong.
+**The site moved, and may move again.** Until October 2026 the blog was Webflow at
+`claude.com/blog`; it is now Next.js at `claude.com/resources/articles`, and every `/blog/<slug>`
+308-redirects to the same slug there. Posts stored before the move keep their `/blog/` `url`
+(it still resolves); new ones get the new path. Slugs, and therefore entry IDs, carried over.
+The listing is matched by `href` alone (`/resources/articles/<slug>`), so it survives markup
+churn; listing cards that link off site (`claude.dev/blog`, `anthropic.com/news` cross-posts) are
+deliberately skipped. Both `list_slugs` and the Worker *raise* on a listing with no article links —
+that means the site moved, and the old code silently reported "no new posts" for days.
+
+**Post pages use CSS-module class names with build hashes**, e.g.
+`DetailSidebar-module-scss-module__3RcHtG__label`. The hash changes on redeploys, so
+`_module_class` matches around it; never hard-code a hashed token. The body is
+`div.text-rich-text--article` (unhashed). Authors come from the JSON-LD `author` list, falling
+back to the sidebar; categories come from the sidebar's Category links.
 
 **BeautifulSoup matches class tokens natively.** `class_="foo"` already matches
 `class="a foo b"` and does *not* match `class="foobar"`. Do not reintroduce
-`class_=re.compile(r"\bfoo\b")` — it's pure noise. The one remaining regex in `scrape.py`
-matches an `href` pattern, which is genuine.
+`class_=re.compile(r"\bfoo\b")` — it's pure noise. Regexes in `scrape.py` are only for
+genuine patterns: article `href`s and hashed CSS-module tokens.
 
-**Long posts render as multiple sibling content divs.** `_extract_body_html` concatenates
-them. Grabbing only the first silently truncates the article — this was a real bug
-(commit `2c80ca4`). It also skips divs inside a `w-condition-invisible` wrapper, which is
-how Webflow hides unused components; without that check, testimonial text splices into
-article bodies.
+**Bodies may span several rich-text divs.** `_extract_body_html` concatenates every
+`text-rich-text--article` div. On the old Webflow site long posts really were split, and grabbing
+only the first silently truncated the article (commit `2c80ca4`). The new site uses one div so
+far; keep the concatenation.
+
+**Listing pagination is cumulative.** `?page=N` renders every card up to page N, and past the end
+it keeps rendering the full list instead of an empty page. `scrape_all_pages` therefore stops at the
+first page that adds no new slug.
 
 **`pub_date` precision is a three-stage thing.** `fetch_post` only reads the page's Date
 field, giving midnight UTC — which readers show as the previous evening in US time zones.
 `stamp_discovery_times` replaces that on a *newly discovered* post with the time the run first saw
 it, if that is still the same UTC day (the Worker dispatches a run within ~10 minutes of a post appearing). `enrich_pub_dates`
 later upgrades either to the real time from the sitemap's `lastmod`, but only when `lastmod` falls
-on the same UTC day, and then sets `pub_date_precise` so it's never re-evaluated. A discovery time
+on the same UTC day, and then sets `pub_date_precise` so it's never re-evaluated. Since the site
+move the sitemap lists articles *without* `lastmod`, so this stage is currently dormant and the
+discovery time is the only time-of-day source; it is kept in case `lastmod` returns. A discovery time
 is *not* flagged precise, so the sitemap can still override it. `_preserve_pub_times` exists because
 `--refresh` would otherwise erase every precise timestamp and discovery time. Touch any of these
 four and check the others. The discovery time is captured once into state, not at render time.
@@ -84,7 +99,7 @@ deploys but the next checkout reverts it, and the post is lost again. `save_docu
 warning when this happens. Commit the file.
 
 **Entry IDs are `tag:` URIs, not URLs.** Deliberately: they survive a domain move
-(`claude.ai/blog` → `claude.com/blog` already happened once). Don't "simplify" them to the
+(`claude.ai/blog` → `claude.com/blog` → `claude.com/resources/articles` has already happened). Don't "simplify" them to the
 post URL — every subscriber would see the whole feed as new.
 
 **`gh` resolves to the wrong repo in a fresh clone.** This repo has an `upstream` remote
@@ -101,11 +116,11 @@ Sanity-check with `gh repo view --json nameWithOwner` before trusting any `gh` o
 
 **The Worker in `worker/` only detects; it never scrapes.** It runs on Cloudflare's free plan,
 whose 10 ms CPU cap per invocation is why it's TypeScript with a regex scan rather than the Python
-code (HTMLRewriter took ~14 ms on the ~800 KB listing; the regex scan ~3 ms). Every 10 minutes it
+code (HTMLRewriter took ~14 ms on the ~800 KB Webflow listing; the regex scan ~3 ms). Every 10 minutes it
 reads listing page 1, compares slugs with the set stored in KV, and on a new one calls
 `workflow_dispatch` on `update-feed.yml`. KV is written only after a successful dispatch, so failures
-retry next tick. Its card/link matching mirrors `scrape.list_slugs` — change one, change both;
-`worker/test/index.spec.ts` checks both agree on `tests/fixtures/blog_listing.html`. The workflow's
+retry next tick. Its link matching mirrors `scrape.parse_listing` — change one, change both;
+`worker/test/index.spec.ts` checks both agree on `tests/fixtures/articles_listing.html`. The workflow's
 own cron is a 6-hourly backstop, so a broken Worker degrades latency, not correctness.
 
 ```bash

@@ -4,34 +4,20 @@
 // rendering — stays in the Python pipeline.
 //
 // Budget: the Workers Free plan allows 10 ms of CPU per invocation. The
-// listing is ~800 KB; HTMLRewriter took ~14 ms to walk it, while the regex scan
-// below takes ~3 ms (text decode included), so the scan is deliberate.
+// old Webflow listing was ~800 KB; HTMLRewriter took ~14 ms to walk it, while a
+// regex scan took ~3 ms (text decode included), so the scan is deliberate.
 
-const LISTING_URL = "https://claude.com/blog";
+const LISTING_URL = "https://claude.com/resources/articles";
 const USER_AGENT = "claude-blog-rss/1.0 (+https://github.com/dave-atx/anthropic-rss)";
 const KNOWN_KEY = "listing-slugs";
 
-// Mirrors scrape.list_slugs: inside each listing card (a role="listitem"
-// div with class blog_cms_item), the first "Blog page" link to /blog/<slug>.
-const CARD = /<div\b[^>]*\bblog_cms_item\b[^>]*>/g;
-const CARD_ROLE = /\srole="listitem"/;
-const LINK = /<a\b[^>]*\sdata-cta="Blog page"[^>]*>/g;
-const SLUG_HREF = /\shref="\/blog\/([^"/]+)"/;
+// Mirrors scrape.parse_listing: every link to /resources/articles/<slug>
+// (relative or absolute), deduped in page order. Cross-post cards that link
+// off site (claude.dev/blog, anthropic.com/news) are deliberately not matched.
+const ARTICLE_LINK = /<a\b[^>]*\shref="(?:https:\/\/claude\.com)?\/resources\/articles\/([^"/?#]+)\/?"/g;
 
 export function listingSlugs(html: string): string[] {
-	const starts = [...html.matchAll(CARD)]
-		.filter((m) => CARD_ROLE.test(m[0]))
-		.map((m) => m.index);
-	const slugs = new Set<string>();
-	starts.forEach((start, i) => {
-		const end = starts[i + 1] ?? html.length;
-		LINK.lastIndex = start;
-		const link = LINK.exec(html);
-		if (!link || link.index >= end) return;
-		const m = SLUG_HREF.exec(link[0]);
-		if (m) slugs.add(m[1]);
-	});
-	return [...slugs];
+	return [...new Set(Array.from(html.matchAll(ARTICLE_LINK), (m) => m[1]))];
 }
 
 async function dispatchBuild(env: Env, fetchFn: typeof fetch): Promise<void> {
@@ -63,7 +49,7 @@ export async function poll(env: Env, fetchFn: typeof fetch = fetch): Promise<str
 	if (!res.ok) throw new Error(`listing fetch failed: ${res.status}`);
 
 	const slugs = listingSlugs(await res.text());
-	// Webflow class names are generated; an empty result means the markup moved.
+	// The listing always links some articles; none means the markup or URLs moved.
 	if (slugs.length === 0) throw new Error("listing yielded no slugs; has the markup changed?");
 
 	const known = await env.STATE.get<string[]>(KNOWN_KEY, "json");

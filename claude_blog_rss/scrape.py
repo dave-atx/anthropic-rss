@@ -1,4 +1,10 @@
-"""Scrape post listings and post content from claude.com/blog."""
+"""Scrape post listings and post content from claude.com/resources/articles.
+
+The blog lived at claude.com/blog (Webflow) until October 2026, when it moved
+to claude.com/resources/articles (Next.js). Old /blog/<slug> URLs 308-redirect
+to the same slug under the new path, so slugs, and the tag: ids built from
+them, carry over unchanged.
+"""
 
 import html
 import json
@@ -13,13 +19,17 @@ from bs4 import BeautifulSoup
 
 from .models import Post
 
-BASE_URL = "https://claude.com/blog"
+BASE_URL = "https://claude.com/resources/articles"
 SITEMAP_URL = "https://claude.com/sitemap.xml"
-PAGINATION_PARAM = "d7430fcd_page"
+PAGINATION_PARAM = "page"
 REQUEST_DELAY = 1.0
 USER_AGENT = "claude-blog-rss/1.0 (+https://github.com/dave-atx/anthropic-rss)"
 
 _SITEMAP_NS = {"sm": "http://www.sitemaps.org/schemas/sitemap/0.9"}
+
+# A listing card's link to an on-site article. Cards for cross-posts link off
+# site (claude.dev/blog, anthropic.com/news) and are deliberately not matched.
+_ARTICLE_HREF = re.compile(r"^(?:https://claude\.com)?/resources/articles/([^/?#]+)/?$")
 
 logger = logging.getLogger(__name__)
 
@@ -47,25 +57,37 @@ def get_session() -> requests.Session:
 
 
 def list_slugs(page: int = 1) -> list[tuple[str, str]]:
-    """Return [(slug, title), ...] from the listing page, deduped."""
+    """Return [(slug, title), ...] from the listing page, deduped, in page order.
+
+    Raises if the page has no article links at all: the listing always has
+    some, so an empty result means the markup or URL scheme moved and the run
+    can't be trusted.
+    """
     url = BASE_URL if page == 1 else f"{BASE_URL}?{PAGINATION_PARAM}={page}"
     resp = get_session().get(url, timeout=30)
     resp.raise_for_status()
-    soup = BeautifulSoup(resp.text, "lxml")
+    results = parse_listing(resp.text)
+    if not results:
+        raise RuntimeError(f"{url} yielded no article slugs; has the markup changed?")
+    return results
 
+
+def parse_listing(html_text: str) -> list[tuple[str, str]]:
+    """Return [(slug, title), ...] for every article link in a listing page.
+
+    The same article can appear twice (featured carousel and grid); the first
+    occurrence wins.
+    """
+    soup = BeautifulSoup(html_text, "lxml")
     seen: set[str] = set()
     results: list[tuple[str, str]] = []
-
-    for card in soup.find_all("div", attrs={"role": "listitem", "class": "blog_cms_item"}):
-        link = card.find("a", attrs={"data-cta": "Blog page", "href": re.compile(r"^/blog/[^/]+$")})
-        if link is None:
+    for link in soup.find_all("a", href=_ARTICLE_HREF):
+        slug = _ARTICLE_HREF.match(link["href"]).group(1)
+        if slug in seen:
             continue
-        slug = link["href"][len("/blog/") :]
-        title = (link.get("data-cta-copy") or "").strip()
-        if slug and slug not in seen:
-            seen.add(slug)
-            results.append((slug, title))
-
+        seen.add(slug)
+        title_el = link.find("h3")
+        results.append((slug, title_el.get_text(strip=True) if title_el else ""))
     return results
 
 
@@ -87,10 +109,9 @@ def fetch_post(slug: str) -> Post | None:
     date_str = _extract_detail(soup, "Date")
     pub_date = _parse_date(date_str)
 
-    categories = _extract_detail_list(soup, "Category")
-    authors = _extract_detail_list(soup, "Author(s)")
-
     json_ld = _extract_json_ld(soup)
+    categories = _extract_detail_list(soup, "Category", "Categories")
+    authors = _extract_authors(soup, json_ld)
     summary = _extract_summary(json_ld)
     image_url = _extract_image(soup, json_ld)
 
@@ -113,45 +134,62 @@ def fetch_post(slug: str) -> Post | None:
 def _extract_body_html(soup: BeautifulSoup) -> str:
     """Concatenate a post's article body.
 
-    Long posts render as *multiple* sibling `blog_post_content_wrap` divs
-    (Webflow splits the rich-text CMS field around embedded components like
-    testimonials/quotes), so grabbing only the first one silently truncates
-    the article. Skip rich-text divs inside a `w-condition-invisible`
-    wrapper (Webflow-hidden components, e.g. an unused testimonial slot)
-    rather than just skipping empty ones, so a post where that condition
-    *is* satisfied doesn't get testimonial text spliced into its body.
+    The rich-text body is a `text-rich-text--article` div. Posts seen so far
+    have exactly one, but take every one in document order: the old Webflow
+    site split long posts into several, and grabbing only the first silently
+    truncated them.
     """
-    parts = []
-    for wrap in soup.find_all("div", class_="blog_post_content_wrap"):
-        rich_divs = [
-            rich
-            for rich in wrap.find_all("div", class_="u-rich-text-blog")
-            if not rich.find_parent(class_="w-condition-invisible")
-        ]
-        if rich_divs:
-            parts.extend(str(rich) for rich in rich_divs)
-        else:
-            parts.append(str(wrap))
-    return "".join(parts)
+    return "".join(str(div) for div in soup.find_all("div", class_="text-rich-text--article"))
 
 
-def _extract_detail(soup: BeautifulSoup, label: str) -> str:
-    """Pull the value text from a hero_blog_post_details_item with a given label."""
-    values = _extract_detail_list(soup, label)
-    return values[0] if values else ""
+def _module_class(component: str, name: str) -> re.Pattern[str]:
+    """Match a CSS-module class token like `DetailSidebar-module-scss-module__3RcHtG__label`.
+
+    The middle segment is a build hash that changes on redeploys, so match
+    around it rather than on the whole token.
+    """
+    return re.compile(rf"^{component}-module-scss-module__\w+__{name}$")
 
 
-def _extract_detail_list(soup: BeautifulSoup, label: str) -> list[str]:
-    """Pull all value texts (e.g. multiple categories) from a details item."""
-    for item in soup.find_all("li", class_="hero_blog_post_details_item"):
-        label_el = item.find(class_="u-foreground-tertiary")
-        if label_el and label_el.get_text(strip=True) == label:
-            texts = [
-                el.get_text(strip=True)
-                for el in item.find_all(["a", "div"], class_="u-text-style-body-3")
-            ]
-            return [t for t in texts if t]
+_SIDEBAR_LABEL = _module_class("DetailSidebar", "label")
+_SIDEBAR_VALUE = _module_class("DetailSidebar", "value")
+
+
+def _extract_detail(soup: BeautifulSoup, *labels: str) -> str:
+    """Pull the text of the post sidebar item with one of the given labels."""
+    for label_el in soup.find_all(class_=_SIDEBAR_LABEL):
+        if label_el.get_text(strip=True) in labels:
+            value_el = label_el.find_next_sibling(class_=_SIDEBAR_VALUE)
+            return value_el.get_text(strip=True) if value_el else ""
+    return ""
+
+
+def _extract_detail_list(soup: BeautifulSoup, *labels: str) -> list[str]:
+    """Pull a multi-valued sidebar item: its links' texts, else its comma-separated text."""
+    for label_el in soup.find_all(class_=_SIDEBAR_LABEL):
+        if label_el.get_text(strip=True) not in labels:
+            continue
+        value_el = label_el.find_next_sibling(class_=_SIDEBAR_VALUE)
+        if value_el is None:
+            return []
+        links = value_el.find_all("a")
+        texts = (
+            [a.get_text(strip=True) for a in links]
+            if links
+            else value_el.get_text(strip=True).split(",")
+        )
+        return [t.strip() for t in texts if t.strip()]
     return []
+
+
+def _extract_authors(soup: BeautifulSoup, json_ld: dict) -> list[str]:
+    """Author names from JSON-LD, falling back to the sidebar's Author(s) item."""
+    raw = json_ld.get("author") or []
+    if isinstance(raw, dict):
+        raw = [raw]
+    names = [html.unescape(a.get("name") or "").strip() for a in raw if isinstance(a, dict)]
+    names = [n for n in names if n]
+    return names or _extract_detail_list(soup, "Author", "Authors")
 
 
 def _extract_json_ld(soup: BeautifulSoup) -> dict:
@@ -174,9 +212,8 @@ def _extract_summary(json_ld: dict) -> str:
 def _extract_image(soup: BeautifulSoup, json_ld: dict) -> str:
     """Per-post image: last non-empty og:image, falling back to JSON-LD image.
 
-    claude.com/blog emits an empty og:image placeholder followed by a real one
-    (either a per-post card or the site's generic fallback), so the last
-    non-empty value is always the right one to use.
+    The old Webflow site emitted an empty og:image placeholder before the real
+    one, so the last non-empty value is the one to use.
     """
     og_images = [
         (m.get("content") or "").strip()
@@ -204,13 +241,14 @@ def _parse_date(date_str: str) -> datetime | None:
 
 
 def _parse_sitemap(xml_bytes: bytes) -> dict[str, datetime]:
-    """Return {slug: lastmod} for direct /blog/<slug> entries in a sitemap.
+    """Return {slug: lastmod} for direct article entries in a sitemap.
 
-    Webflow bumps a page's <lastmod> on each CMS publish of that page, which
-    gives genuine time-of-day precision (unlike the dynamically-rendered
-    Last-Modified HTTP header on claude.com, which just reflects when that
-    particular response was cache-filled, not the page's real publish/edit
-    time).
+    Webflow bumped a page's <lastmod> on each CMS publish, which gave genuine
+    time-of-day precision (unlike the dynamically-rendered Last-Modified HTTP
+    header on claude.com, which just reflects when that particular response was
+    cache-filled). Since the move to /resources/articles the sitemap lists
+    articles without <lastmod>, so this currently finds nothing; it is kept so
+    precise times come back if the site starts emitting them again.
     """
     try:
         root = ET.fromstring(xml_bytes)
@@ -251,17 +289,22 @@ def fetch_sitemap_lastmods() -> dict[str, datetime]:
     return _parse_sitemap(resp.content)
 
 
-def scrape_all_pages(max_pages: int = 20, delay: float = REQUEST_DELAY) -> list[tuple[str, str]]:
-    """Walk all listing pages and return unique (slug, title) pairs."""
+def scrape_all_pages(max_pages: int = 40, delay: float = REQUEST_DELAY) -> list[tuple[str, str]]:
+    """Walk listing pages and return unique (slug, title) pairs.
+
+    `?page=N` is cumulative ("load more"): it renders every card up to page N,
+    and past the end it keeps rendering the full list. So stop at the first
+    page that adds nothing new rather than waiting for an empty one.
+    """
     all_slugs: dict[str, str] = {}
     for page in range(1, max_pages + 1):
         logger.info("Fetching listing page %d", page)
-        slugs = list_slugs(page)
-        if not slugs:
-            logger.info("No items on page %d, stopping.", page)
-            break
-        for slug, title in slugs:
+        before = len(all_slugs)
+        for slug, title in list_slugs(page):
             all_slugs.setdefault(slug, title)
+        if len(all_slugs) == before:
+            logger.info("Page %d added no new slugs, stopping.", page)
+            break
         if page < max_pages:
             time.sleep(delay)
     return list(all_slugs.items())

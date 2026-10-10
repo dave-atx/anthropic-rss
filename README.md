@@ -1,6 +1,6 @@
 # claude-blog-rss
 
-Unofficial Atom and JSON Feed mirror of [claude.com/blog](https://claude.com/blog), with full
+Unofficial Atom and JSON Feed mirror of the Claude blog ([claude.com/resources/articles](https://claude.com/resources/articles), formerly claude.com/blog), with full
 article text.
 
 ## Subscribe
@@ -42,9 +42,9 @@ A year is *closed* once it is past: no post can be added to it, so its documents
 
 ## How it works
 
-A small Cloudflare Worker (`worker/`) polls the first page of `claude.com/blog` every 10 minutes. When
+A small Cloudflare Worker (`worker/`) polls the first page of `claude.com/resources/articles` every 10 minutes. When
 a slug appears that it hasn't seen before, it dispatches the GitHub Actions workflow; the workflow
-also runs every 6 hours on its own as a backstop. The workflow scrapes `claude.com/blog` for new
+also runs every 6 hours on its own as a backstop. The workflow scrapes `claude.com/resources/articles` for new
 posts and rebuilds
 every document in `docs/`. If the result differs from the last deploy, it deploys it as a GitHub
 Pages artifact via `actions/upload-pages-artifact` and `actions/deploy-pages`.

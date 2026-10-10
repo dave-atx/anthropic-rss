@@ -1,25 +1,16 @@
 import { env } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
-import listingHtml from "../../tests/fixtures/blog_listing.html?raw";
+import listingHtml from "../../tests/fixtures/articles_listing.html?raw";
 import { listingSlugs, poll } from "../src/index";
 
 // What scrape.list_slugs returns for the same fixture, in order.
 const FIXTURE_SLUGS = [
-	"meet-the-winners-of-our-built-with-opus-4-6-claude-code-hackathon",
-	"best-practices-for-using-claude-opus-4-7-with-claude-code",
-	"using-claude-code-session-management-and-1m-context",
-	"claude-code-desktop-redesign",
-	"introducing-routines-in-claude-code",
-	"preparing-your-security-program-for-ai-accelerated-offense",
-	"seeing-like-an-agent",
-	"multi-agent-coordination-patterns",
-	"the-advisor-strategy",
-	"cowork-for-enterprise",
-	"claude-managed-agents",
-	"carta-healthcare-clinical-abstractor",
-	"subagents-in-claude-code",
-	"harnessing-claudes-intelligence",
-	"claude-platform-compliance-api",
+	"dashboards-and-motion",
+	"how-block-orchestrates-claude-fable-across-thousands-of-pull-requests",
+	"how-comcast-booz-allen-use-claude-mythos-to-secure-their-codebases",
+	"claude-now-works-in-google-docs-sheets-and-slides",
+	"were-expanding-the-claude-startups-program-to-help-founders-build",
+	"how-cresta-turned-cx-expertise-into-an-agent-builder-on-the-claude-agent-sdk",
 ];
 
 type Call = { url: string; init?: RequestInit };
@@ -29,7 +20,7 @@ function fakeFetch(opts: { listing?: string; dispatchStatus?: number } = {}) {
 	const fn = (async (input: RequestInfo | URL, init?: RequestInit) => {
 		const url = String(input);
 		calls.push({ url, init });
-		if (url === "https://claude.com/blog") {
+		if (url === "https://claude.com/resources/articles") {
 			return new Response(opts.listing ?? listingHtml, { headers: { "content-type": "text/html" } });
 		}
 		if (url.startsWith("https://api.github.com/")) {
@@ -50,15 +41,16 @@ describe("listingSlugs", () => {
 		expect(listingSlugs(listingHtml)).toEqual(FIXTURE_SLUGS);
 	});
 
-	it("ignores links outside listing cards and nested paths", () => {
+	it("ignores off-site, index, nested, and localized links", () => {
 		const html = `
-			<a data-cta="Blog page" href="/blog/stray">x</a>
-			<div role="listitem" class="blog_cms_item w-dyn-item">
-				<a data-cta="Blog page" href="/blog/real-post">x</a>
-				<a data-cta="Blog page" href="/blog/category/news">x</a>
-				<a data-cta="Other" href="/blog/other">x</a>
-			</div>`;
-		expect(listingSlugs(html)).toEqual(["real-post"]);
+			<a href="/resources/articles">All articles</a>
+			<a href="https://claude.dev/blog/cross-post/">x</a>
+			<a class="card" href="/resources/articles/real-post"><h3>Real</h3></a>
+			<a href="/resources/articles/real-post">dup</a>
+			<a href="https://claude.com/resources/articles/absolute-post/">x</a>
+			<a href="/resources/articles/category/news">x</a>
+			<a href="/ja/resources/articles/localized">x</a>`;
+		expect(listingSlugs(html)).toEqual(["real-post", "absolute-post"]);
 	});
 });
 
