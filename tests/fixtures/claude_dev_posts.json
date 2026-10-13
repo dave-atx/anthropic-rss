@@ -1,0 +1,310 @@
+{
+ "site": "claude.dev",
+ "count": 15,
+ "posts": [
+  {
+   "slug": "building-effective-agent-automations",
+   "format": "essay",
+   "title": "Building effective agent automations",
+   "date": "2026-10-08",
+   "tag": "agents",
+   "author": "Lance Martin and CJ Avilla",
+   "team": "Member of Technical Staff",
+   "summary": "A reference implementation walkthrough with common failure modes",
+   "draft": false,
+   "words": 1946,
+   "mins": 9,
+   "tree": [
+    {
+     "id": "get-the-code",
+     "t": "Get the code"
+    }
+   ],
+   "url": "https://claude.dev/blog/building-effective-agent-automations/"
+  },
+  {
+   "slug": "claude-code-in-the-cloud",
+   "format": "essay",
+   "title": "Claude Code in the cloud: a field guide to cloud sessions",
+   "date": "2026-10-06",
+   "tag": "playbooks",
+   "author": "Addy Osmani",
+   "team": "Member of Technical Staff",
+   "summary": "What changes when Claude Code runs on its own machine, the workflows where that pays off, and how to connect GitHub on the first try.",
+   "description": "Cloud sessions run Claude Code on a fresh VM for each task. Four real sessions, seven workflows that suit them, and how to connect GitHub without getting stuck.",
+   "draft": false,
+   "words": 3957,
+   "mins": 18,
+   "tree": [
+    {
+     "id": "three-tasks-one-repository-three-machines",
+     "t": "Three tasks, one repository, three machines"
+    }
+   ],
+   "url": "https://claude.dev/blog/claude-code-in-the-cloud/"
+  },
+  {
+   "slug": "getting-started-with-claude-code-mods",
+   "format": "essay",
+   "title": "Getting started with Claude Code mods",
+   "date": "2026-10-01",
+   "tag": "tutorials",
+   "author": "Addy Osmani",
+   "team": "Member of Technical Staff",
+   "summary": "Build your first Claude Code mod from an empty folder, then see what else the API can do.",
+   "description": "Mods are hooks that ship inside plugins and run inside your Claude Code session. Build one from an empty folder, then tour two larger mods.",
+   "draft": false,
+   "words": 2504,
+   "mins": 11,
+   "tree": [
+    {
+     "id": "how-a-mod-works",
+     "t": "How a mod works"
+    }
+   ],
+   "url": "https://claude.dev/blog/getting-started-with-claude-code-mods/"
+  },
+  {
+   "slug": "building-with-claude-sonnet-5-5",
+   "format": "essay",
+   "title": "Building with Claude Sonnet 5.5",
+   "date": "2026-09-28",
+   "tag": "playbooks",
+   "author": "Addy Osmani",
+   "team": "Member of Technical Staff",
+   "summary": "When to choose Sonnet over Opus, what it costs, and how to tune it.",
+   "draft": false,
+   "words": 2019,
+   "mins": 9,
+   "tree": [
+    {
+     "id": "choosing-between-sonnet-55-and-opus-55",
+     "t": "Choosing between Sonnet 5.5 and Opus 5.5"
+    }
+   ],
+   "url": "https://claude.dev/blog/building-with-claude-sonnet-5-5/"
+  },
+  {
+   "slug": "automating-eval-design-and-hillclimbing",
+   "format": "essay",
+   "title": "Automating eval design and hillclimbing with Claude",
+   "date": "2026-09-28",
+   "tag": "playbooks",
+   "author": "Lance Martin",
+   "team": "Member of Technical Staff",
+   "summary": "Principles for designing evals and hillclimbing against them without fooling yourself, and how the claude-api skill's build-eval and hillclimb commands put them to work.",
+   "draft": false,
+   "words": 2668,
+   "mins": 12,
+   "tree": [
+    {
+     "id": "eval-design",
+     "t": "Eval design"
+    }
+   ],
+   "url": "https://claude.dev/blog/automating-eval-design-and-hillclimbing/"
+  },
+  {
+   "slug": "what-a-task-costs-on-opus-5-5",
+   "format": "essay",
+   "title": "What a task costs on Opus 5.5",
+   "date": "2026-09-25",
+   "tag": "playbooks",
+   "author": "Addy Osmani",
+   "team": "Member of Technical Staff",
+   "summary": "Opus 5.5 costs less per token than Opus 5.",
+   "description": "The same token price can cost very different amounts per task. Learn what Claude Code tasks cost on Opus 5.5 and which settings change the bill.",
+   "draft": false,
+   "words": 4824,
+   "mins": 21,
+   "tree": [
+    {
+     "id": "the-cost-of-a-task-and-the-cost-of-a-retry",
+     "t": "The cost of a task, and the cost of a retry"
+    }
+   ],
+   "url": "https://claude.dev/blog/what-a-task-costs-on-opus-5-5/"
+  },
+  {
+   "slug": "spending-your-effort",
+   "format": "essay",
+   "title": "Using Claude Code: Spending your effort",
+   "date": "2026-09-25",
+   "tag": "engineering",
+   "author": "Thariq Shihipar",
+   "team": "Member of Technical Staff",
+   "summary": "What effort really is and when to use which level in Claude Code, from my own tests of three builds and a deep dive into Terminal-Bench 3.0 on Opus 5.5 and Fable 5.1.",
+   "draft": false,
+   "words": 1898,
+   "mins": 8,
+   "tree": [
+    {
+     "id": "what-is-effort",
+     "t": "What is effort?"
+    }
+   ],
+   "url": "https://claude.dev/blog/spending-your-effort/"
+  },
+  {
+   "slug": "how-we-made-claude-ai-faster",
+   "format": "essay",
+   "title": "How we made claude.ai 3x faster in two weeks",
+   "date": "2026-09-23",
+   "tag": "engineering",
+   "author": "Raymond Wang, Sam Attard, and Issac G.",
+   "team": "Member of Technical Staff",
+   "summary": "Once Claude can measure something, it can make it faster. So we kept finding more things to measure.",
+   "description": "Inside our performance sprint: the benchmarks Claude built, the loop each Slack thread ran, and the guardrails that let us ship 3,000 changes safely.",
+   "draft": false,
+   "words": 3471,
+   "mins": 15,
+   "tree": [
+    {
+     "id": "the-brief",
+     "t": "The brief"
+    }
+   ],
+   "url": "https://claude.dev/blog/how-we-made-claude-ai-faster/"
+  },
+  {
+   "slug": "getting-the-most-out-of-opus-5-5",
+   "format": "essay",
+   "title": "Getting the most out of Opus 5.5 in Claude and Claude Code",
+   "date": "2026-09-22",
+   "tag": "playbooks",
+   "author": "Addy Osmani",
+   "team": "Member of Technical Staff",
+   "summary": "How to prompt Opus 5.5, steer a long run, and check your results in Claude apps and Claude Code.",
+   "draft": false,
+   "words": 2067,
+   "mins": 9,
+   "tree": [
+    {
+     "id": "try-this-first",
+     "t": "Try this first"
+    }
+   ],
+   "url": "https://claude.dev/blog/getting-the-most-out-of-opus-5-5/"
+  },
+  {
+   "slug": "the-new-rules-of-context-engineering-for-claude-5-generation-models",
+   "format": "essay",
+   "title": "The new rules of context engineering for Claude 5 generation models",
+   "date": "2026-07-24",
+   "tag": "engineering",
+   "author": "Thariq Shihipar",
+   "team": "Member of Technical Staff",
+   "summary": "We removed over 80% of Claude Code's system prompt for more advanced models. How to apply the lessons we learned to your own context engineering in Claude Code and with your own agents.",
+   "draft": false,
+   "words": 1550,
+   "mins": 7,
+   "tree": [
+    {
+     "id": "unhobbling-claude",
+     "t": "Unhobbling Claude"
+    }
+   ],
+   "url": "https://claude.dev/blog/the-new-rules-of-context-engineering-for-claude-5-generation-models/"
+  },
+  {
+   "slug": "lessons-from-building-claude-code-how-we-use-skills",
+   "format": "essay",
+   "title": "Lessons from building Claude Code: How we use skills",
+   "date": "2026-06-03",
+   "tag": "skills",
+   "author": "Thariq Shihipar",
+   "team": "Member of Technical Staff",
+   "summary": "What we learned building and scaling hundreds of skills internally at Anthropic.",
+   "draft": false,
+   "words": 2368,
+   "mins": 11,
+   "tree": [
+    {
+     "id": "what-are-skills",
+     "t": "What are skills?"
+    }
+   ],
+   "url": "https://claude.dev/blog/lessons-from-building-claude-code-how-we-use-skills/"
+  },
+  {
+   "slug": "a-harness-for-every-task-dynamic-workflows-in-claude-code",
+   "format": "essay",
+   "title": "A harness for every task: dynamic workflows in Claude Code",
+   "date": "2026-06-02",
+   "tag": "agents",
+   "author": "Thariq Shihipar and Sid Bidasaria",
+   "team": "Members of Technical Staff",
+   "summary": "Claude Code can now write and orchestrate its own multi-agent harness on the fly. Here's how dynamic workflows work, and the patterns that get the most out of them.",
+   "draft": false,
+   "words": 2367,
+   "mins": 11,
+   "tree": [
+    {
+     "id": "example-prompts",
+     "t": "Example prompts"
+    }
+   ],
+   "url": "https://claude.dev/blog/a-harness-for-every-task-dynamic-workflows-in-claude-code/"
+  },
+  {
+   "slug": "using-claude-code-the-unreasonable-effectiveness-of-html",
+   "format": "essay",
+   "title": "Using Claude Code: The unreasonable effectiveness of HTML",
+   "date": "2026-05-20",
+   "tag": "playbooks",
+   "author": "Thariq Shihipar",
+   "team": "Member of Technical Staff",
+   "summary": "How and why members of the Claude Code team use HTML instead of Markdown to produce richer, more readable, and easily shareable outputs.",
+   "draft": false,
+   "words": 2113,
+   "mins": 9,
+   "tree": [
+    {
+     "id": "why-use-html",
+     "t": "Why use HTML?"
+    }
+   ],
+   "url": "https://claude.dev/blog/using-claude-code-the-unreasonable-effectiveness-of-html/"
+  },
+  {
+   "slug": "lessons-from-building-claude-code-prompt-caching-is-everything",
+   "format": "essay",
+   "title": "Lessons from building Claude Code: Prompt caching is everything",
+   "date": "2026-04-30",
+   "tag": "engineering",
+   "author": "Thariq Shihipar",
+   "team": "Member of Technical Staff",
+   "summary": "Best practices for optimizing prompt caching in Claude Code, including how to most effectively structure your prompt, use tools, and layer on compaction.",
+   "draft": false,
+   "words": 1404,
+   "mins": 6,
+   "tree": [
+    {
+     "id": "lay-out-your-prompt-for-caching",
+     "t": "Lay out your prompt for caching"
+    }
+   ],
+   "url": "https://claude.dev/blog/lessons-from-building-claude-code-prompt-caching-is-everything/"
+  },
+  {
+   "slug": "seeing-like-an-agent",
+   "format": "essay",
+   "title": "Seeing like an agent: how we design tools in Claude Code",
+   "date": "2026-04-10",
+   "tag": "agents",
+   "author": "Thariq Shihipar",
+   "team": "Member of Technical Staff",
+   "summary": "Learn how the Claude Code team designs, tests, and evolves tools by thinking from the model's point of view.",
+   "draft": false,
+   "words": 1543,
+   "mins": 7,
+   "tree": [
+    {
+     "id": "improving-elicitation-with-the-askuserquestion-tool",
+     "t": "Improving elicitation with the AskUserQuestion tool"
+    }
+   ],
+   "url": "https://claude.dev/blog/seeing-like-an-agent/"
+  }
+ ]
+}

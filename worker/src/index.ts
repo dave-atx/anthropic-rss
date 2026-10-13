@@ -1,13 +1,13 @@
-// Cheap new-post detector. Each cron tick fetches page 1 of the blog listing,
-// pulls out the post slugs, and if any slug is new since the last tick, starts
-// the GitHub Actions feed build. Everything else — scraping posts, dates,
-// rendering — stays in the Python pipeline.
+// Cheap new-post detector. Each cron tick reads the four post indexes the
+// Python pipeline reads (scrape.discover), pulls out the post slugs, and if any
+// slug is new since the last tick, starts the GitHub Actions feed build.
+// Everything else — scraping posts, dates, rendering — stays in the Python
+// pipeline.
 //
 // Budget: the Workers Free plan allows 10 ms of CPU per invocation. The
 // old Webflow listing was ~800 KB; HTMLRewriter took ~14 ms to walk it, while a
-// regex scan took ~3 ms (text decode included), so the scan is deliberate.
+// regex scan took ~3 ms (text decode included), so the scans are deliberate.
 
-const LISTING_URL = "https://claude.com/resources/articles";
 const USER_AGENT = "claude-blog-rss/1.0 (+https://github.com/dave-atx/anthropic-rss)";
 const KNOWN_KEY = "listing-slugs";
 
@@ -40,6 +40,47 @@ export function listingSlugs(html: string): string[] {
 	return [...slugs];
 }
 
+// Mirrors scrape.parse_claude_dev_index.
+type ClaudeDevIndex = { posts?: { slug?: string; url?: string; draft?: boolean }[] };
+
+export function claudeDevSlugs(json: string): string[] {
+	const index = JSON.parse(json) as ClaudeDevIndex;
+	return (index.posts ?? []).filter((p) => p.slug && p.url && !p.draft).map((p) => p.slug as string);
+}
+
+// The link half of scrape.parse_anthropic_index: links to /<directory>/<slug>
+// in the rendered HTML, deduped in page order. The Python side also decodes
+// the page's embedded Next.js payload, which lists every post, but that costs
+// ~6 ms of CPU on the news page. The rendered page links the ten newest news
+// posts and every engineering post, and a new post is always among the newest,
+// so links are enough to detect one.
+export function anthropicSlugs(html: string, directory: "news" | "engineering"): string[] {
+	const href = new RegExp(`href="(?:https://www\\.anthropic\\.com)?/${directory}/([^/?#"]+)/?"`, "g");
+	return [...new Set(Array.from(html.matchAll(href), (m) => m[1]))];
+}
+
+type Source = { url: string; slugs: (body: string) => string[] };
+
+// The order of scrape.discover. Each index always lists some posts, so one
+// yielding none means it moved or changed shape.
+export const SOURCES: Source[] = [
+	{ url: "https://claude.com/resources/product-announcements", slugs: listingSlugs },
+	{ url: "https://claude.dev/posts.json", slugs: claudeDevSlugs },
+	{ url: "https://www.anthropic.com/news", slugs: (html) => anthropicSlugs(html, "news") },
+	{
+		url: "https://www.anthropic.com/engineering",
+		slugs: (html) => anthropicSlugs(html, "engineering"),
+	},
+];
+
+async function readSource(source: Source, fetchFn: typeof fetch): Promise<string[]> {
+	const res = await fetchFn(source.url, { headers: { "User-Agent": USER_AGENT } });
+	if (!res.ok) throw new Error(`${source.url} fetch failed: ${res.status}`);
+	const slugs = source.slugs(await res.text());
+	if (slugs.length === 0) throw new Error(`${source.url} yielded no slugs; has the markup changed?`);
+	return slugs;
+}
+
 async function dispatchBuild(env: Env, fetchFn: typeof fetch): Promise<void> {
 	const url = `https://api.github.com/repos/${env.DISPATCH_REPO}/actions/workflows/${env.DISPATCH_WORKFLOW}/dispatches`;
 	const res = await fetchFn(url, {
@@ -62,16 +103,23 @@ async function dispatchBuild(env: Env, fetchFn: typeof fetch): Promise<void> {
  *
  * The first run only seeds KV: with nothing to compare against, every slug
  * would look new. KV is written only after a successful dispatch, so a failed
- * dispatch is retried on the next tick.
+ * dispatch is retried on the next tick. Known slugs accumulate rather than
+ * being replaced, so an index that fails for a tick doesn't make its posts
+ * look new on the next. A failed index doesn't stop the others being checked,
+ * but the poll still throws afterwards so the failure shows up.
  */
 export async function poll(env: Env, fetchFn: typeof fetch = fetch): Promise<string[]> {
-	const res = await fetchFn(LISTING_URL, { headers: { "User-Agent": USER_AGENT } });
-	if (!res.ok) throw new Error(`listing fetch failed: ${res.status}`);
+	const results = await Promise.allSettled(SOURCES.map((s) => readSource(s, fetchFn)));
+	const errors = results.flatMap((r) => (r.status === "rejected" ? [r.reason] : []));
+	const slugs = [...new Set(results.flatMap((r) => (r.status === "fulfilled" ? r.value : [])))];
 
-	const slugs = listingSlugs(await res.text());
-	// The listing always links some articles; none means the markup or URLs moved.
-	if (slugs.length === 0) throw new Error("listing yielded no slugs; has the markup changed?");
+	const fresh = await recordSlugs(env, fetchFn, slugs);
+	if (errors.length > 0) throw new AggregateError(errors, errors.map(String).join("; "));
+	return fresh;
+}
 
+async function recordSlugs(env: Env, fetchFn: typeof fetch, slugs: string[]): Promise<string[]> {
+	if (slugs.length === 0) return [];
 	const known = await env.STATE.get<string[]>(KNOWN_KEY, "json");
 	if (known === null) {
 		await env.STATE.put(KNOWN_KEY, JSON.stringify(slugs));
@@ -84,7 +132,7 @@ export async function poll(env: Env, fetchFn: typeof fetch = fetch): Promise<str
 	if (fresh.length === 0) return [];
 
 	await dispatchBuild(env, fetchFn);
-	await env.STATE.put(KNOWN_KEY, JSON.stringify(slugs));
+	await env.STATE.put(KNOWN_KEY, JSON.stringify([...known, ...fresh]));
 	console.log(JSON.stringify({ event: "dispatched", fresh }));
 	return fresh;
 }

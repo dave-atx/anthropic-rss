@@ -11,14 +11,7 @@ from .archives import partition
 from .feed import atom_archive_url, atom_url, render_atom
 from .jsonfeed import jsonfeed_archive_url, jsonfeed_url, parse_jsonfeed, render_jsonfeed
 from .models import Post
-from .scrape import (
-    REQUEST_DELAY,
-    fetch_post,
-    fetch_sitemap_lastmods,
-    fetch_text,
-    list_slugs,
-    scrape_all_pages,
-)
+from .scrape import REQUEST_DELAY, discover, fetch_post, fetch_sitemap_lastmods, fetch_text
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -27,9 +20,6 @@ ROOT = Path(__file__).parent.parent
 DOCS_PATH = ROOT / "docs"
 CURRENT_JSON_PATH = DOCS_PATH / "feed.json"
 ATOM_PATH = DOCS_PATH / "atom.xml"
-
-# The listing shows ~15 posts per page; hourly runs never see more than one page of news.
-LISTING_PAGES = 1
 
 
 def load_state() -> dict[str, Post]:
@@ -230,9 +220,11 @@ def fetch_new_posts(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Update the claude.com/blog feeds")
+    parser = argparse.ArgumentParser(description="Update the feeds")
     parser.add_argument(
-        "--backfill", action="store_true", help="Fetch all listing pages (initial run)"
+        "--backfill",
+        action="store_true",
+        help="Fetch every page of the claude.com listing, not just the first",
     )
     parser.add_argument(
         "--refresh",
@@ -246,14 +238,7 @@ def main() -> None:
     posts = load_state()
     logger.info("Loaded %d known posts", len(posts))
 
-    if args.backfill:
-        listing = scrape_all_pages()
-    else:
-        listing: list[tuple[str, str]] = []
-        for page in range(1, LISTING_PAGES + 1):
-            listing.extend(list_slugs(page))
-            if page < LISTING_PAGES:
-                time.sleep(REQUEST_DELAY)
+    listing = discover(backfill=args.backfill)
 
     if args.refresh is not None:
         # A listed post is fetched from where the listing points now; anything

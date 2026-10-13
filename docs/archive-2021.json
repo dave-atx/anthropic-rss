@@ -1,0 +1,33 @@
+{
+  "version": "https://jsonfeed.org/version/1.1",
+  "title": "Claude Blog (unofficial)",
+  "home_page_url": "https://claude.com/blog",
+  "feed_url": "https://dave-atx.github.io/anthropic-rss/archive-2021.json",
+  "description": "Unofficial feed of Claude product announcements, the claude.dev blog, and Anthropic news and engineering posts, with full text. Content © Anthropic.",
+  "icon": "https://cdn.prod.website-files.com/6889473510b50328dbb70ae6/68c33859cc6cd903686c66a2_apple-touch-icon.png",
+  "language": "en",
+  "authors": [
+    {
+      "name": "Anthropic"
+    }
+  ],
+  "items": [
+    {
+      "id": "tag:claude.com,2026:anthropic-raises-124-million-to-build-more-reliable-general-ai-systems",
+      "url": "https://www.anthropic.com/news/anthropic-raises-124-million-to-build-more-reliable-general-ai-systems",
+      "title": "Anthropic raises $124 million to build more reliable, general AI systems",
+      "summary": "Anthropic's Series A, led by Jaan Tallinn, funds research toward steerable, interpretable, and robust large-scale AI systems.",
+      "content_html": "<div class=\"Body-module-scss-module__z40yvW__body\" data-theme=\"ivory\"><p class=\"Body-module-scss-module__z40yvW__reading-column body-2 serif post-text\">Anthropic, an AI safety and research company, has raised $124 million in a Series A. The financing round will support Anthropic in executing against its research roadmap and building prototypes of reliable and steerable AI systems.<br/><br/>The company is led by siblings Dario Amodei (CEO) and Daniela Amodei (President). The Anthropic team has previously conducted research into <a href=\"https://arxiv.org/abs/2005.14165\">GPT-3</a>, <a href=\"https://distill.pub/2020/circuits/\">Circuit-Based Interpretability</a>, <a href=\"https://distill.pub/2021/multimodal-neurons/\">Multimodal Neurons</a>, <a href=\"https://arxiv.org/abs/2010.14701\">Scaling Laws</a>, <a href=\"https://openai.com/blog/ai-and-compute/\">AI &amp; Compute</a>, <a href=\"https://arxiv.org/pdf/1606.06565.pdf\">Concrete Problems in AI Safety</a>, and <a href=\"https://arxiv.org/abs/1706.03741\">Learning from Human Preferences</a>. Anthropic will use the funding for computationally-intensive research to develop large-scale AI systems that are steerable, interpretable, and robust.<br/><br/>“Anthropic’s goal is to make the fundamental research advances that will let us build more capable, general, and reliable AI systems, then deploy these systems in a way that benefits people. We’re thrilled to be working with investors that support us in this mission and expect to concentrate on research in the immediate term,” said Anthropic CEO Dario Amodei.<br/><br/>Anthropic will focus on research into increasing the safety of AI systems; specifically, the company is focusing on increasing the reliability of large-scale AI models, developing the techniques and tools to make them more interpretable, and building ways to more tightly integrate human feedback into the development and deployment of these systems.<br/><br/>The Series A round was led by Jaan Tallinn, technology investor and co-founder of Skype. The round included participation from James McClave, Dustin Moskovitz, the Center for Emerging Risk Research, Eric Schmidt, and others.<br/><br/>To find out more about Anthropic’s research agenda and approach, you can read our website and its job postings. The company is hiring researchers, engineers, and operational experts to support it in executing against its research roadmap. Find out more here: Anthropic.com.</p></div>",
+      "image": "https://www-cdn.anthropic.com/images/4zrzovbb/website/6d4a0d28992ade92d6fa63646fd9c9d318245c6c-2400x1260.jpg",
+      "date_published": "2021-05-28T07:00:00+00:00",
+      "tags": [
+        "Announcements"
+      ],
+      "_claude_blog_rss": {
+        "slug": "anthropic-raises-124-million-to-build-more-reliable-general-ai-systems",
+        "date_str": "May 28, 2021",
+        "pub_date_precise": true
+      }
+    }
+  ]
+}

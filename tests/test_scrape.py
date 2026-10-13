@@ -1,10 +1,12 @@
 """Tests for scrape.py using local HTML fixtures (no network)."""
 
+import json
 from pathlib import Path
 
 import pytest
 from bs4 import BeautifulSoup
 
+from claude_blog_rss import scrape
 from claude_blog_rss.scrape import (
     _clean_external_body,
     _extract_authors,
@@ -20,6 +22,9 @@ from claude_blog_rss.scrape import (
     _parse_date,
     _parse_sitemap,
     _parser_for,
+    discover,
+    parse_anthropic_index,
+    parse_claude_dev_index,
     parse_listing,
 )
 
@@ -109,6 +114,121 @@ def test_listing_matches_off_site_posts_only_on_cards_and_known_hosts():
         "eng-post",
         "real-post",
         "absolute-post",
+    ]
+
+
+# ── other indexes ─────────────────────────────────────────────────────────────
+
+
+def test_index_fixtures_match_the_shared_expectations():
+    """index_slugs.json is what both this scraper and the Worker must find in
+    each index fixture (worker/test/index.spec.ts reads it too)."""
+    expected = json.loads((FIXTURES / "index_slugs.json").read_text())
+    found = {
+        "articles_listing.html": parse_listing(listing_html()),
+        "claude_dev_posts.json": parse_claude_dev_index(
+            json.loads((FIXTURES / "claude_dev_posts.json").read_text())
+        ),
+        "anthropic_news_index.html": parse_anthropic_index(
+            (FIXTURES / "anthropic_news_index.html").read_text(), "news"
+        ),
+        "anthropic_engineering_index.html": parse_anthropic_index(
+            (FIXTURES / "anthropic_engineering_index.html").read_text(), "engineering"
+        ),
+    }
+    assert {name: [slug for slug, _url in posts] for name, posts in found.items()} == expected
+
+
+def test_claude_dev_index_lists_every_post():
+    index = json.loads((FIXTURES / "claude_dev_posts.json").read_text())
+    posts = parse_claude_dev_index(index)
+    assert len(posts) == 15
+    assert posts[0] == (
+        "building-effective-agent-automations",
+        "https://claude.dev/blog/building-effective-agent-automations/",
+    )
+
+
+def test_claude_dev_index_skips_drafts():
+    index = {
+        "posts": [
+            {"slug": "live", "url": "https://claude.dev/blog/live/", "draft": False},
+            {"slug": "wip", "url": "https://claude.dev/blog/wip/", "draft": True},
+        ]
+    }
+    assert [slug for slug, _url in parse_claude_dev_index(index)] == ["live"]
+
+
+def test_anthropic_news_index_reads_every_post_from_page_data():
+    posts = parse_anthropic_index((FIXTURES / "anthropic_news_index.html").read_text(), "news")
+    # The rendered HTML links only ten; the embedded data has them all.
+    assert len(posts) == 273
+    assert posts[:2] == [
+        ("cyber-verification-program", "https://www.anthropic.com/news/cyber-verification-program"),
+        ("2026-usage-policy-update", "https://www.anthropic.com/news/2026-usage-policy-update"),
+    ]
+    assert (
+        "anthropic-raises-124-million-to-build-more-reliable-general-ai-systems",
+        "https://www.anthropic.com/news/"
+        "anthropic-raises-124-million-to-build-more-reliable-general-ai-systems",
+    ) in posts
+
+
+def test_anthropic_engineering_index():
+    posts = parse_anthropic_index(
+        (FIXTURES / "anthropic_engineering_index.html").read_text(), "engineering"
+    )
+    assert len(posts) == 26
+    assert posts[0] == (
+        "redesigning-source-control",
+        "https://www.anthropic.com/engineering/redesigning-source-control",
+    )
+
+
+def next_push(payload: str) -> str:
+    """Wrap RSC payload text the way a Next.js page embeds it."""
+    return f"<script>self.__next_f.push([1,{json.dumps(payload)}])</script>"
+
+
+def test_anthropic_index_takes_each_slug_from_its_own_post():
+    # The slugless post must not be credited with the `page` slug after it.
+    # The payload is split mid-object across two chunks, as Next.js may.
+    payload = (
+        '[{"_type":"post","slug":{"_type":"slug","current":"first"}},'
+        '{"_type":"post","title":"no slug"},'
+        '{"_type":"page","slug":{"_type":"slug","current":"research"}},'
+        '{"_type":"post","subjects":[{"_type":"tag"}],"slug":{"_type":"slug","current":"second"}}]'
+    )
+    html = (
+        next_push(payload[:150])
+        + next_push(payload[150:])
+        + '<a href="/news/linked-only">x</a><a href="/news/first">dup</a>'
+        + '<a href="/engineering/other-index">x</a>'
+    )
+    assert [slug for slug, _url in parse_anthropic_index(html, "news")] == [
+        "first",
+        "second",
+        "linked-only",
+    ]
+
+
+def test_discover_merges_indexes_listing_first(monkeypatch):
+    monkeypatch.setattr(scrape.time, "sleep", lambda _s: None)
+    monkeypatch.setattr(
+        scrape, "list_slugs", lambda: [("moved", f"{ARTICLES}/moved"), ("a", f"{ARTICLES}/a")]
+    )
+    monkeypatch.setattr(scrape, "scrape_all_pages", lambda: pytest.fail("not a backfill"))
+    monkeypatch.setattr(
+        scrape, "list_claude_dev", lambda: [("moved", "https://claude.dev/blog/moved/")]
+    )
+    monkeypatch.setattr(
+        scrape, "list_anthropic", lambda d: [(f"{d}-post", f"https://www.anthropic.com/{d}/x")]
+    )
+    assert discover() == [
+        ("moved", f"{ARTICLES}/moved"),
+        ("a", f"{ARTICLES}/a"),
+        ("news-post", "https://www.anthropic.com/news/x"),
+        ("engineering-post", "https://www.anthropic.com/engineering/x"),
     ]
 
 

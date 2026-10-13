@@ -1,32 +1,44 @@
 import { env } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
+import engineeringHtml from "../../tests/fixtures/anthropic_engineering_index.html?raw";
+import newsHtml from "../../tests/fixtures/anthropic_news_index.html?raw";
 import listingHtml from "../../tests/fixtures/articles_listing.html?raw";
-import { listingSlugs, poll } from "../src/index";
+import claudeDevJson from "../../tests/fixtures/claude_dev_posts.json?raw";
+import expectedRaw from "../../tests/fixtures/index_slugs.json?raw";
+import { anthropicSlugs, claudeDevSlugs, listingSlugs, poll } from "../src/index";
 
-// What scrape.list_slugs returns for the same fixture, in order.
-const FIXTURE_SLUGS = [
-	"dashboards-and-motion",
-	"building-effective-agent-automations",
-	"how-block-orchestrates-claude-fable-across-thousands-of-pull-requests",
-	"claude-haiku-5-5",
-	"automating-eval-design-and-hillclimbing",
-	"how-comcast-booz-allen-use-claude-mythos-to-secure-their-codebases",
-	"claude-now-works-in-google-docs-sheets-and-slides",
-	"were-expanding-the-claude-startups-program-to-help-founders-build",
-	"cyber-verification-program",
-	"claude-code-in-the-cloud",
-	"how-cresta-turned-cx-expertise-into-an-agent-builder-on-the-claude-agent-sdk",
+// What the Python scraper finds in each fixture; tests/test_scrape.py checks
+// the same file, so the two can't drift apart.
+const EXPECTED = JSON.parse(expectedRaw) as Record<string, string[]>;
+
+// What a poll sees across all four indexes, in scrape.discover's order.
+const ALL_SLUGS = [
+	...new Set([
+		...listingSlugs(listingHtml),
+		...claudeDevSlugs(claudeDevJson),
+		...anthropicSlugs(newsHtml, "news"),
+		...anthropicSlugs(engineeringHtml, "engineering"),
+	]),
 ];
+
+const BODIES: Record<string, string> = {
+	"https://claude.com/resources/product-announcements": listingHtml,
+	"https://claude.dev/posts.json": claudeDevJson,
+	"https://www.anthropic.com/news": newsHtml,
+	"https://www.anthropic.com/engineering": engineeringHtml,
+};
 
 type Call = { url: string; init?: RequestInit };
 
-function fakeFetch(opts: { listing?: string; dispatchStatus?: number } = {}) {
+function fakeFetch(opts: { bodies?: Record<string, string | number>; dispatchStatus?: number } = {}) {
 	const calls: Call[] = [];
+	const bodies = { ...BODIES, ...opts.bodies };
 	const fn = (async (input: RequestInfo | URL, init?: RequestInit) => {
 		const url = String(input);
 		calls.push({ url, init });
-		if (url === "https://claude.com/resources/articles") {
-			return new Response(opts.listing ?? listingHtml, { headers: { "content-type": "text/html" } });
+		if (url in bodies) {
+			const body = bodies[url];
+			return typeof body === "number" ? new Response("error", { status: body }) : new Response(body);
 		}
 		if (url.startsWith("https://api.github.com/")) {
 			return new Response(null, { status: opts.dispatchStatus ?? 204 });
@@ -41,11 +53,33 @@ async function known(): Promise<string[] | null> {
 	return env.STATE.get<string[]>("listing-slugs", "json");
 }
 
-describe("listingSlugs", () => {
-	it("matches the Python scraper on the fixture", () => {
-		expect(listingSlugs(listingHtml)).toEqual(FIXTURE_SLUGS);
+describe("index parsers match the Python scraper", () => {
+	it("on the claude.com listing", () => {
+		expect(listingSlugs(listingHtml)).toEqual(EXPECTED["articles_listing.html"]);
 	});
 
+	it("on claude.dev's posts.json", () => {
+		expect(claudeDevSlugs(claudeDevJson)).toEqual(EXPECTED["claude_dev_posts.json"]);
+	});
+
+	it("on anthropic.com/engineering, which links every post", () => {
+		expect(anthropicSlugs(engineeringHtml, "engineering")).toEqual(
+			EXPECTED["anthropic_engineering_index.html"],
+		);
+	});
+
+	it("on anthropic.com/news, from links to the newest posts only", () => {
+		const slugs = anthropicSlugs(newsHtml, "news");
+		expect(slugs.length).toBeGreaterThanOrEqual(10);
+		expect(EXPECTED["anthropic_news_index.html"]).toEqual(expect.arrayContaining(slugs));
+		// The payload lists the newest first; the links must cover them.
+		expect(slugs).toEqual(
+			expect.arrayContaining(EXPECTED["anthropic_news_index.html"].slice(0, 10)),
+		);
+	});
+});
+
+describe("listingSlugs", () => {
 	it("matches off-site posts only on cards and known hosts", () => {
 		const card = 'class="ResourceCard-module-scss-module__q33Tuq__card"';
 		const html = `
@@ -68,24 +102,31 @@ describe("poll", () => {
 		await env.STATE.delete("listing-slugs");
 	});
 
+	it("reads every index", async () => {
+		const f = fakeFetch();
+		await poll(env, f.fn);
+		expect(f.calls.map((c) => c.url).sort()).toEqual(Object.keys(BODIES).sort());
+	});
+
 	it("seeds state on the first run without dispatching", async () => {
 		const f = fakeFetch();
 		expect(await poll(env, f.fn)).toEqual([]);
 		expect(f.dispatches()).toHaveLength(0);
-		expect(await known()).toEqual(FIXTURE_SLUGS);
+		expect(await known()).toEqual(ALL_SLUGS);
 	});
 
 	it("does nothing when no slug is new", async () => {
-		await env.STATE.put("listing-slugs", JSON.stringify(FIXTURE_SLUGS));
+		await env.STATE.put("listing-slugs", JSON.stringify(ALL_SLUGS));
 		const f = fakeFetch();
 		expect(await poll(env, f.fn)).toEqual([]);
 		expect(f.dispatches()).toHaveLength(0);
 	});
 
-	it("dispatches the workflow when a new slug appears", async () => {
-		await env.STATE.put("listing-slugs", JSON.stringify(FIXTURE_SLUGS.slice(1)));
+	it("dispatches the workflow when a new slug appears on any index", async () => {
+		const newest = EXPECTED["anthropic_engineering_index.html"][0];
+		await env.STATE.put("listing-slugs", JSON.stringify(ALL_SLUGS.filter((s) => s !== newest)));
 		const f = fakeFetch();
-		expect(await poll(env, f.fn)).toEqual([FIXTURE_SLUGS[0]]);
+		expect(await poll(env, f.fn)).toEqual([newest]);
 
 		const [call] = f.dispatches();
 		expect(call.url).toBe(
@@ -93,20 +134,33 @@ describe("poll", () => {
 		);
 		expect(call.init?.method).toBe("POST");
 		expect(JSON.parse(String(call.init?.body))).toEqual({ ref: "main" });
-		expect(await known()).toEqual(FIXTURE_SLUGS);
+		expect(new Set(await known())).toEqual(new Set(ALL_SLUGS));
 	});
 
 	it("keeps old state when the dispatch fails, so the next tick retries", async () => {
-		const before = FIXTURE_SLUGS.slice(1);
+		const before = ALL_SLUGS.slice(1);
 		await env.STATE.put("listing-slugs", JSON.stringify(before));
 		const f = fakeFetch({ dispatchStatus: 401 });
 		await expect(poll(env, f.fn)).rejects.toThrow(/dispatch failed: 401/);
 		expect(await known()).toEqual(before);
 	});
 
-	it("fails loudly when the listing has no cards", async () => {
-		const f = fakeFetch({ listing: "<html><body>redesigned</body></html>" });
-		await expect(poll(env, f.fn)).rejects.toThrow(/no slugs/);
-		expect(await known()).toBeNull();
+	it("keeps known slugs from an index that failed this tick", async () => {
+		const extra = "no-longer-listed";
+		await env.STATE.put("listing-slugs", JSON.stringify([extra, ...ALL_SLUGS.slice(1)]));
+		const f = fakeFetch({ bodies: { "https://www.anthropic.com/news": 503 } });
+		await expect(poll(env, f.fn)).rejects.toThrow(/anthropic\.com\/news fetch failed: 503/);
+		// The other indexes were still checked, and the new slug dispatched.
+		expect(f.dispatches()).toHaveLength(1);
+		expect(await known()).toContain(extra);
+		expect(await known()).toContain(ALL_SLUGS[0]);
+	});
+
+	it("fails loudly when an index yields no slugs, after checking the rest", async () => {
+		const f = fakeFetch({
+			bodies: { "https://claude.com/resources/product-announcements": "<html>redesigned</html>" },
+		});
+		await expect(poll(env, f.fn)).rejects.toThrow(/product-announcements yielded no slugs/);
+		expect((await known())?.length).toBeGreaterThan(0);
 	});
 });

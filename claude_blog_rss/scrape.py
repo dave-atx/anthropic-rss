@@ -1,14 +1,14 @@
-"""Scrape post listings and post content from claude.com/resources/articles.
+"""Discover and scrape posts from Anthropic's sites.
+
+Four indexes are read (see `discover`): claude.com's product-announcements
+listing, claude.dev's post index, and anthropic.com's news and engineering
+pages. Every post is keyed by the last segment of its URL, its slug.
 
 The blog lived at claude.com/blog (Webflow) until October 2026, when it moved
 to claude.com/resources/articles (Next.js). Old /blog/<slug> URLs 308-redirect
 to the same slug under the new path, so slugs, and the tag: ids built from
-them, carry over unchanged.
-
-The listing also carries cards for posts hosted elsewhere: claude.dev/blog and
-anthropic.com (news, engineering, model launches). Several of these are old
-claude.com/blog posts that moved. They're scraped for full text too, keyed by
-the last segment of their URL, so a moved post keeps its slug and entry id.
+them, carry over unchanged. Several old claude.com/blog posts moved to
+claude.dev or anthropic.com; keying on the last segment keeps their entry ids.
 """
 
 import html
@@ -26,6 +26,19 @@ from bs4 import BeautifulSoup
 from .models import Post
 
 BASE_URL = "https://claude.com/resources/articles"
+# The articles listing filtered to one category. Its cards link to articles
+# under BASE_URL, and to launch posts on anthropic.com.
+LISTING_URL = "https://claude.com/resources/product-announcements"
+CLAUDE_DEV_INDEX_URL = "https://claude.dev/posts.json"
+ANTHROPIC_URL = "https://www.anthropic.com"
+# anthropic.com index pages, with the CMS type of the posts they list. The
+# rendered HTML links only the first few; the page's embedded Next.js data
+# carries every one.
+ANTHROPIC_INDEXES = {"news": "post", "engineering": "engineeringArticle"}
+# Index entries that redirect to one of these aren't posts (an engineering
+# "post" that is now a docs page). Matched on the URL after redirects, so
+# they're still requested once per run, but skipped quietly.
+SKIPPED_URL_PREFIXES = ("https://code.claude.com/docs/",)
 SITEMAP_URL = "https://claude.com/sitemap.xml"
 PAGINATION_PARAM = "page"
 REQUEST_DELAY = 1.0
@@ -73,7 +86,7 @@ def list_slugs(page: int = 1) -> list[tuple[str, str]]:
     has some, so an empty result means the markup or URL scheme moved and the
     run can't be trusted.
     """
-    url = BASE_URL if page == 1 else f"{BASE_URL}?{PAGINATION_PARAM}={page}"
+    url = LISTING_URL if page == 1 else f"{LISTING_URL}?{PAGINATION_PARAM}={page}"
     resp = get_session().get(url, timeout=30)
     resp.raise_for_status()
     results = parse_listing(resp.text)
@@ -114,6 +127,104 @@ def parse_listing(html_text: str) -> list[tuple[str, str]]:
     return results
 
 
+def list_claude_dev() -> list[tuple[str, str]]:
+    """Return [(slug, url), ...] for every published post in claude.dev's index.
+
+    Raises if the index lists none: it holds every post, so empty means it moved.
+    """
+    resp = get_session().get(CLAUDE_DEV_INDEX_URL, timeout=30)
+    resp.raise_for_status()
+    results = parse_claude_dev_index(resp.json())
+    if not results:
+        raise RuntimeError(f"{CLAUDE_DEV_INDEX_URL} listed no posts; has its format changed?")
+    return results
+
+
+def parse_claude_dev_index(index: dict) -> list[tuple[str, str]]:
+    return [
+        (p["slug"], p["url"])
+        for p in index.get("posts") or []
+        if p.get("slug") and p.get("url") and not p.get("draft")
+    ]
+
+
+def list_anthropic(directory: str) -> list[tuple[str, str]]:
+    """Return [(slug, url), ...] for every post on an anthropic.com index page.
+
+    Raises if the page yields none, for the same reason `list_slugs` does.
+    """
+    url = f"{ANTHROPIC_URL}/{directory}"
+    resp = get_session().get(url, timeout=30)
+    resp.raise_for_status()
+    results = parse_anthropic_index(resp.text, directory)
+    if not results:
+        raise RuntimeError(f"{url} yielded no posts; has the markup changed?")
+    return results
+
+
+# A chunk of the Next.js (RSC) payload: a JSON string literal holding part of
+# the stream. Chunks can split anywhere, so they're joined before parsing.
+_NEXT_PUSH = re.compile(r'self\.__next_f\.push\(\[1,("[^"\\]*(?:\\.[^"\\]*)*")\]\)')
+
+
+def _next_payload(html_text: str) -> str:
+    return "".join(json.loads(m.group(1)) for m in _NEXT_PUSH.finditer(html_text))
+
+
+def parse_anthropic_index(html_text: str, directory: str) -> list[tuple[str, str]]:
+    """Return [(slug, url), ...] for an anthropic.com news or engineering page.
+
+    Posts come from the Next.js payload embedded in the page, where each is a
+    JSON object opening `{"_type":"<type>",` with a `slug.current` field; every
+    such object is decoded whole, so a slug is only ever taken from its own
+    post. Links in the rendered HTML are added too, so the newest posts don't
+    depend on the payload's shape alone. Deduped, payload order first.
+
+    The Worker reads only those links (the payload is too costly for its CPU
+    budget): news renders links to its ten newest posts, engineering to all.
+    """
+    payload = _next_payload(html_text)
+    opening = f'{{"_type":"{ANTHROPIC_INDEXES[directory]}",'
+    decoder = json.JSONDecoder()
+    slugs: list[str] = []
+    pos = payload.find(opening)
+    while pos != -1:
+        try:
+            post, _end = decoder.raw_decode(payload, pos)
+        except json.JSONDecodeError:
+            pass
+        else:
+            slug = (post.get("slug") or {}).get("current")
+            if isinstance(slug, str) and slug and "/" not in slug:
+                slugs.append(slug)
+        pos = payload.find(opening, pos + 1)
+    href = re.compile(rf'href="(?:{re.escape(ANTHROPIC_URL)})?/{directory}/([^/?#"]+)/?"')
+    slugs += href.findall(html_text)
+    return [(slug, f"{ANTHROPIC_URL}/{directory}/{slug}") for slug in dict.fromkeys(slugs)]
+
+
+def discover(backfill: bool = False) -> list[tuple[str, str]]:
+    """Return [(slug, url), ...] for every post the indexes list, deduped.
+
+    The claude.com listing comes first, so a post it shares with another
+    index keeps the listing's URL. Only that listing paginates: page 1 unless
+    `backfill`. The others list every post on one page. Any index failing
+    raises, like a listing failure, since a partial view can't be trusted.
+    """
+    found: dict[str, str] = {}
+    sources = [
+        lambda: scrape_all_pages() if backfill else list_slugs(),
+        list_claude_dev,
+        *(lambda d=d: list_anthropic(d) for d in ANTHROPIC_INDEXES),
+    ]
+    for i, source in enumerate(sources):
+        if i:
+            time.sleep(REQUEST_DELAY)
+        for slug, url in source():
+            found.setdefault(slug, url)
+    return list(found.items())
+
+
 def fetch_post(slug: str, url: str | None = None) -> Post | None:
     """Fetch and parse a single post. Returns None on failure.
 
@@ -130,6 +241,9 @@ def fetch_post(slug: str, url: str | None = None) -> Post | None:
         return None
 
     final_url = resp.url
+    if final_url.startswith(SKIPPED_URL_PREFIXES):
+        logger.info("Skipping %s: it redirects to %s, which isn't a post", url, final_url)
+        return None
     parser = _parser_for(final_url)
     if parser is None:
         logger.error("No parser for %s (from %s)", final_url, url)
