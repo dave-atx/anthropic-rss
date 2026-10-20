@@ -12,7 +12,7 @@ from .models import Post
 FEED_TITLE = "Claude Blog (unofficial)"
 FEED_DESCRIPTION = (
     "Unofficial feed of Claude product announcements, the claude.dev blog, and Anthropic news "
-    "and engineering posts, with full text. Content © Anthropic."
+    "and research posts, with full text. Content © Anthropic."
 )
 FEED_LINK = "https://claude.com/blog"
 FEED_LANGUAGE = "en"

@@ -24,6 +24,7 @@ from claude_blog_rss.scrape import (
     _parser_for,
     discover,
     parse_anthropic_index,
+    parse_anthropic_sitemap,
     parse_claude_dev_index,
     parse_listing,
 )
@@ -132,8 +133,8 @@ def test_index_fixtures_match_the_shared_expectations():
         "anthropic_news_index.html": parse_anthropic_index(
             (FIXTURES / "anthropic_news_index.html").read_text(), "news"
         ),
-        "anthropic_engineering_index.html": parse_anthropic_index(
-            (FIXTURES / "anthropic_engineering_index.html").read_text(), "engineering"
+        "anthropic_research_index.html": parse_anthropic_index(
+            (FIXTURES / "anthropic_research_index.html").read_text(), "research"
         ),
     }
     assert {name: [slug for slug, _url in posts] for name, posts in found.items()} == expected
@@ -159,30 +160,45 @@ def test_claude_dev_index_skips_drafts():
     assert [slug for slug, _url in parse_claude_dev_index(index)] == ["live"]
 
 
-def test_anthropic_news_index_reads_every_post_from_page_data():
+def test_anthropic_news_index_reads_posts_from_page_data():
     posts = parse_anthropic_index((FIXTURES / "anthropic_news_index.html").read_text(), "news")
-    # The rendered HTML links only ten; the embedded data has them all.
-    assert len(posts) == 273
-    assert posts[:2] == [
-        ("cyber-verification-program", "https://www.anthropic.com/news/cyber-verification-program"),
-        ("2026-usage-policy-update", "https://www.anthropic.com/news/2026-usage-policy-update"),
-    ]
-    assert (
-        "anthropic-raises-124-million-to-build-more-reliable-general-ai-systems",
-        "https://www.anthropic.com/news/"
-        "anthropic-raises-124-million-to-build-more-reliable-general-ai-systems",
-    ) in posts
+    # The rendered HTML links ~20; the embedded data has more.
+    assert len(posts) == 78
+    assert ("public-benefit-fund", "https://www.anthropic.com/news/public-benefit-fund") in posts
+    slugs = {slug for slug, _url in posts}
+    # Research articles in the news page's data, and category pages it links.
+    assert "claude-scorpion-toxin-binder-design" not in slugs
+    assert not slugs & {"announcements", "partnerships", "policy", "product"}
 
 
-def test_anthropic_engineering_index():
+def test_anthropic_research_index():
     posts = parse_anthropic_index(
-        (FIXTURES / "anthropic_engineering_index.html").read_text(), "engineering"
+        (FIXTURES / "anthropic_research_index.html").read_text(), "research"
     )
-    assert len(posts) == 26
-    assert posts[0] == (
-        "redesigning-source-control",
-        "https://www.anthropic.com/engineering/redesigning-source-control",
-    )
+    assert len(posts) == 61
+    assert (
+        "claude-scorpion-toxin-binder-design",
+        "https://www.anthropic.com/research/claude-scorpion-toxin-binder-design",
+    ) in posts
+    # Linked from the hero carousel only, not in the page data as articles.
+    assert ("project-vend-2", "https://www.anthropic.com/research/project-vend-2") in posts
+    slugs = {slug for slug, _url in posts}
+    # A news article in the research page's data.
+    assert "public-benefit-fund" not in slugs
+
+
+def test_anthropic_sitemap_lists_research_posts_only():
+    xml = (FIXTURES / "anthropic_sitemap.xml").read_bytes()
+    assert parse_anthropic_sitemap(xml, "research") == [
+        (
+            "building-effective-agents",
+            "https://www.anthropic.com/research/building-effective-agents",
+        ),
+        (
+            "claude-scorpion-toxin-binder-design",
+            "https://www.anthropic.com/research/claude-scorpion-toxin-binder-design",
+        ),
+    ]
 
 
 def next_push(payload: str) -> str:
@@ -191,19 +207,26 @@ def next_push(payload: str) -> str:
 
 
 def test_anthropic_index_takes_each_slug_from_its_own_post():
-    # The slugless post must not be credited with the `page` slug after it.
+    # The slugless article must not be credited with the `page` slug after it.
     # The payload is split mid-object across two chunks, as Next.js may.
     payload = (
-        '[{"_type":"post","slug":{"_type":"slug","current":"first"}},'
-        '{"_type":"post","title":"no slug"},'
-        '{"_type":"page","slug":{"_type":"slug","current":"research"}},'
-        '{"_type":"post","subjects":[{"_type":"tag"}],"slug":{"_type":"slug","current":"second"}}]'
+        '[{"_id":"a1","_type":"article","slug":{"_type":"slug","current":"first"},'
+        '"articleType":"news"},'
+        '{"_id":"a2","_type":"article","title":"no slug","articleType":"news"},'
+        '{"_id":"p1","_type":"page","slug":{"_type":"slug","current":"research"}},'
+        '{"_id":"a3","_type":"article","slug":{"_type":"slug","current":"a-paper"},'
+        '"articleType":"research"},'
+        '{"_id":"a4","_type":"article","slug":{"_type":"slug","current":"elsewhere"},'
+        '"articleType":"news","linkedUrl":"/features/elsewhere"},'
+        '{"_id":"a5","_type":"article","cardTeams":[{"_type":"team"}],'
+        '"slug":{"_type":"slug","current":"second"},"articleType":"news"}]'
     )
     html = (
         next_push(payload[:150])
         + next_push(payload[150:])
         + '<a href="/news/linked-only">x</a><a href="/news/first">dup</a>'
-        + '<a href="/engineering/other-index">x</a>'
+        + '<a class="TopicLink-module-scss-module__Ab12Cd__link" href="/news/product">x</a>'
+        + '<a href="/research/other-index">x</a>'
     )
     assert [slug for slug, _url in parse_anthropic_index(html, "news")] == [
         "first",
@@ -228,7 +251,23 @@ def test_discover_merges_indexes_listing_first(monkeypatch):
         ("moved", f"{ARTICLES}/moved"),
         ("a", f"{ARTICLES}/a"),
         ("news-post", "https://www.anthropic.com/news/x"),
-        ("engineering-post", "https://www.anthropic.com/engineering/x"),
+        ("research-post", "https://www.anthropic.com/research/x"),
+    ]
+
+
+def test_backfill_adds_research_from_the_sitemap(monkeypatch):
+    monkeypatch.setattr(scrape.time, "sleep", lambda _s: None)
+    monkeypatch.setattr(scrape, "scrape_all_pages", lambda: [("a", f"{ARTICLES}/a")])
+    monkeypatch.setattr(scrape, "list_claude_dev", lambda: [])
+    monkeypatch.setattr(scrape, "list_anthropic", lambda d: [])
+    monkeypatch.setattr(
+        scrape,
+        "list_anthropic_sitemap",
+        lambda d: [("old-paper", f"https://www.anthropic.com/{d}/old-paper")],
+    )
+    assert discover(backfill=True) == [
+        ("a", f"{ARTICLES}/a"),
+        ("old-paper", "https://www.anthropic.com/research/old-paper"),
     ]
 
 
@@ -391,6 +430,37 @@ def test_anthropic_news_post_has_a_precise_time_and_no_org_byline():
     assert post["html_body"].count("launching a new, expanded version") == 1
     assert "Related content" not in post["html_body"]
     assert 'src="https://www.anthropic.com/_next/image?' in post["html_body"]
+
+
+def test_anthropic_news_post_takes_categories_from_the_hero():
+    # The October 2026 template: no PostDetail subjects, and no time of day.
+    url = "https://www.anthropic.com/news/public-benefit-fund"
+    post = _parse_anthropic(fixture_soup("anthropic_news_post_hero.html"), url)
+    assert post["title"] == "Investing in the public benefit"
+    assert post["pub_date"] == "2026-10-18T00:00:00+00:00"
+    assert "pub_date_precise" not in post
+    assert post["categories"] == [
+        "Announcements",
+        "Funding",
+        "Economic Futures",
+        "Labor market",
+        "Nonprofits",
+        "Leadership",
+    ]
+    assert post["html_body"].startswith('<div class="Body-module-scss-module__')
+
+
+def test_anthropic_research_paper_leads_with_the_link_to_the_paper():
+    url = "https://www.anthropic.com/research/in-context-learning-and-induction-heads"
+    post = _parse_anthropic(fixture_soup("anthropic_research_paper.html"), url)
+    assert post["title"] == "In-context learning and induction heads"
+    assert post["pub_date"] == "2022-03-08T00:00:00+00:00"
+    # Deduped: the team link and the first topic are both "Interpretability".
+    assert post["categories"] == ["Interpretability", "Training", "Scaling laws"]
+    assert post["html_body"].startswith(
+        '<p><a href="https://transformer-circuits.pub/2022/'
+        'in-context-learning-and-induction-heads/index.html">Read the paper</a></p>'
+    )
 
 
 def test_anthropic_launch_page_takes_outer_body_and_footnotes():

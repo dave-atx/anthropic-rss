@@ -5,7 +5,7 @@ Unofficial Atom and JSON Feed mirror, with full article text, of:
 - Claude product announcements ([claude.com/resources/product-announcements](https://claude.com/resources/product-announcements))
 - the claude.dev blog ([claude.dev](https://claude.dev/))
 - Anthropic news ([anthropic.com/news](https://www.anthropic.com/news))
-- Anthropic engineering ([anthropic.com/engineering](https://www.anthropic.com/engineering))
+- Anthropic research, which includes the former engineering blog ([anthropic.com/research](https://www.anthropic.com/research))
 
 Posts from before October 2026 also include everything on the Claude blog (claude.com/blog, later
 claude.com/resources/articles), not just product announcements.
@@ -51,7 +51,7 @@ A year is *closed* once it is past: no post can be added to it, so its documents
 
 A small Cloudflare Worker (`worker/`) polls the four indexes every 10 minutes: the first page of
 the product-announcements listing, claude.dev's `posts.json`, and anthropic.com's news and
-engineering pages. When a slug appears that it hasn't seen before, it dispatches the GitHub Actions
+research pages. When a slug appears that it hasn't seen before, it dispatches the GitHub Actions
 workflow; the workflow also runs every 6 hours on its own as a backstop. The workflow reads the
 same indexes, scrapes any new posts, and rebuilds every document in `docs/`. If the result differs from the last deploy, it deploys it as a GitHub
 Pages artifact via `actions/upload-pages-artifact` and `actions/deploy-pages`.

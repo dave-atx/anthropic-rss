@@ -21,7 +21,7 @@ const CLASS = /\sclass="([^"]*)"/;
 const ARTICLE_HREF = /^(?:https:\/\/claude\.com)?\/resources\/articles\/([^/?#]+)\/?$/;
 const EXTERNAL_HREF =
 	/^https:\/\/(?:claude\.dev\/blog|(?:www\.)?anthropic\.com)\/(?:[^/?#]+\/)*([^/?#]+)\/?$/;
-const LISTING_CARD = /(?:^|\s)ResourceCard-module-scss-module__\w+__card(?:\s|$)/;
+const LISTING_CARD = /(?:^|\s)ResourceCard-module-scss-module__[\w-]+__card(?:\s|$)/;
 
 export function listingSlugs(html: string): string[] {
 	const slugs = new Set<string>();
@@ -49,14 +49,22 @@ export function claudeDevSlugs(json: string): string[] {
 }
 
 // The link half of scrape.parse_anthropic_index: links to /<directory>/<slug>
-// in the rendered HTML, deduped in page order. The Python side also decodes
-// the page's embedded Next.js payload, which lists every post, but that costs
-// ~6 ms of CPU on the news page. The rendered page links the ten newest news
-// posts and every engineering post, and a new post is always among the newest,
-// so links are enough to detect one.
-export function anthropicSlugs(html: string, directory: "news" | "engineering"): string[] {
-	const href = new RegExp(`href="(?:https://www\\.anthropic\\.com)?/${directory}/([^/?#"]+)/?"`, "g");
-	return [...new Set(Array.from(html.matchAll(href), (m) => m[1]))];
+// in the rendered HTML, except topic links (class
+// TopicLink-module-scss-module__<hash>__link), which go to category pages such
+// as /news/product. Deduped in page order. The Python side also decodes the
+// page's embedded Next.js payload, which lists more posts, but that costs
+// ~6 ms of CPU. Each page links its ~25 newest posts, and a new post is always
+// among the newest, so links are enough to detect one.
+const TOPIC_LINK = /(?:^|\s)TopicLink-module-scss-module__[\w-]+__link(?:\s|$)/;
+
+export function anthropicSlugs(html: string, directory: "news" | "research"): string[] {
+	const postHref = new RegExp(`^(?:https://www\\.anthropic\\.com)?/${directory}/([^/?#]+)/?$`);
+	const slugs = new Set<string>();
+	for (const [tag] of html.matchAll(ANCHOR)) {
+		const slug = postHref.exec(HREF.exec(tag)?.[1] ?? "")?.[1];
+		if (slug && !TOPIC_LINK.test(CLASS.exec(tag)?.[1] ?? "")) slugs.add(slug);
+	}
+	return [...slugs];
 }
 
 type Source = { url: string; slugs: (body: string) => string[] };
@@ -68,8 +76,8 @@ export const SOURCES: Source[] = [
 	{ url: "https://claude.dev/posts.json", slugs: claudeDevSlugs },
 	{ url: "https://www.anthropic.com/news", slugs: (html) => anthropicSlugs(html, "news") },
 	{
-		url: "https://www.anthropic.com/engineering",
-		slugs: (html) => anthropicSlugs(html, "engineering"),
+		url: "https://www.anthropic.com/research",
+		slugs: (html) => anthropicSlugs(html, "research"),
 	},
 ];
 

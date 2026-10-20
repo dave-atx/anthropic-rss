@@ -3,7 +3,7 @@
   "title": "Claude Blog (unofficial)",
   "home_page_url": "https://claude.com/blog",
   "feed_url": "https://dave-atx.github.io/anthropic-rss/archive-2021.json",
-  "description": "Unofficial feed of Claude product announcements, the claude.dev blog, and Anthropic news and engineering posts, with full text. Content © Anthropic.",
+  "description": "Unofficial feed of Claude product announcements, the claude.dev blog, and Anthropic news and research posts, with full text. Content © Anthropic.",
   "icon": "https://cdn.prod.website-files.com/6889473510b50328dbb70ae6/68c33859cc6cd903686c66a2_apple-touch-icon.png",
   "language": "en",
   "authors": [
@@ -12,6 +12,42 @@
     }
   ],
   "items": [
+    {
+      "id": "tag:claude.com,2026:a-mathematical-framework-for-transformer-circuits",
+      "url": "https://www.anthropic.com/research/a-mathematical-framework-for-transformer-circuits",
+      "title": "A Mathematical Framework for Transformer Circuits",
+      "summary": "Reverse-engineering small attention-only transformers reveals how induction heads form via head composition.",
+      "content_html": "<p><a href=\"https://transformer-circuits.pub/2021/framework/index.html\">Read the paper</a></p><div class=\"Body-module-scss-module__PA4F1q__body\" data-article-body=\"true\" data-theme=\"ivory\"><h4 class=\"typography-module-scss-module__tOQyXa__headline-6 Body-module-scss-module__PA4F1q__reading-column post-subsection\" data-component=\"Headline\" data-selectable=\"true\" id=\"48c7a08431d8\"><br/></h4></div>",
+      "image": "https://www-cdn.anthropic.com/images/4zrzovbb/website/6d4a0d28992ade92d6fa63646fd9c9d318245c6c-2400x1260.jpg",
+      "date_published": "2021-12-22T00:00:00+00:00",
+      "tags": [
+        "Interpretability",
+        "Alignment"
+      ],
+      "_claude_blog_rss": {
+        "slug": "a-mathematical-framework-for-transformer-circuits",
+        "date_str": "December 22, 2021"
+      }
+    },
+    {
+      "id": "tag:claude.com,2026:a-general-language-assistant-as-a-laboratory-for-alignment",
+      "url": "https://www.anthropic.com/research/a-general-language-assistant-as-a-laboratory-for-alignment",
+      "title": "A General Language Assistant as a Laboratory for Alignment",
+      "summary": "A general language assistant as a testbed for alignment, where preference modeling outperforms imitation learning and scales better.",
+      "content_html": "<p><a href=\"https://arxiv.org/abs/2112.00861\">Read Paper</a></p><div class=\"Body-module-scss-module__PA4F1q__body\" data-article-body=\"true\" data-theme=\"ivory\"><h3 class=\"typography-module-scss-module__tOQyXa__headline-5 Body-module-scss-module__PA4F1q__reading-column post-section\" data-component=\"Headline\" data-selectable=\"true\" id=\"abstract\">Abstract</h3><p class=\"Body-module-scss-module__PA4F1q__reading-column post-text\" data-selectable=\"true\">Given the broad capabilities of large language models, it should be possible to work towards a general-purpose, text-based assistant that is aligned with human values, meaning that it is helpful, honest, and harmless. As an initial foray in this direction we study simple baseline techniques and evaluations, such as prompting. We find that the benefits from modest interventions increase with model size, generalize to a variety of alignment evaluations, and do not compromise the performance of large models. Next we investigate scaling trends for several training objectives relevant to alignment, comparing imitation learning, binary discrimination, and ranked preference modeling. We find that ranked preference modeling performs much better than imitation learning, and often scales more favorably with model size. In contrast, binary discrimination typically performs and scales very similarly to imitation learning. Finally we study a `preference model pre-training' stage of training, with the goal of improving sample efficiency when finetuning on human preferences.</p></div>",
+      "image": "https://www-cdn.anthropic.com/images/4zrzovbb/website/6d4a0d28992ade92d6fa63646fd9c9d318245c6c-2400x1260.jpg",
+      "date_published": "2021-12-01T00:00:00+00:00",
+      "tags": [
+        "Alignment",
+        "Scaling laws",
+        "Training",
+        "Safety evaluations"
+      ],
+      "_claude_blog_rss": {
+        "slug": "a-general-language-assistant-as-a-laboratory-for-alignment",
+        "date_str": "December 1, 2021"
+      }
+    },
     {
       "id": "tag:claude.com,2026:anthropic-raises-124-million-to-build-more-reliable-general-ai-systems",
       "url": "https://www.anthropic.com/news/anthropic-raises-124-million-to-build-more-reliable-general-ai-systems",

@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
-import engineeringHtml from "../../tests/fixtures/anthropic_engineering_index.html?raw";
 import newsHtml from "../../tests/fixtures/anthropic_news_index.html?raw";
+import researchHtml from "../../tests/fixtures/anthropic_research_index.html?raw";
 import listingHtml from "../../tests/fixtures/articles_listing.html?raw";
 import claudeDevJson from "../../tests/fixtures/claude_dev_posts.json?raw";
 import expectedRaw from "../../tests/fixtures/index_slugs.json?raw";
@@ -17,7 +17,7 @@ const ALL_SLUGS = [
 		...listingSlugs(listingHtml),
 		...claudeDevSlugs(claudeDevJson),
 		...anthropicSlugs(newsHtml, "news"),
-		...anthropicSlugs(engineeringHtml, "engineering"),
+		...anthropicSlugs(researchHtml, "research"),
 	]),
 ];
 
@@ -25,7 +25,7 @@ const BODIES: Record<string, string> = {
 	"https://claude.com/resources/product-announcements": listingHtml,
 	"https://claude.dev/posts.json": claudeDevJson,
 	"https://www.anthropic.com/news": newsHtml,
-	"https://www.anthropic.com/engineering": engineeringHtml,
+	"https://www.anthropic.com/research": researchHtml,
 };
 
 type Call = { url: string; init?: RequestInit };
@@ -62,20 +62,24 @@ describe("index parsers match the Python scraper", () => {
 		expect(claudeDevSlugs(claudeDevJson)).toEqual(EXPECTED["claude_dev_posts.json"]);
 	});
 
-	it("on anthropic.com/engineering, which links every post", () => {
-		expect(anthropicSlugs(engineeringHtml, "engineering")).toEqual(
-			EXPECTED["anthropic_engineering_index.html"],
-		);
+	it.each([
+		["news", newsHtml, "anthropic_news_index.html"],
+		["research", researchHtml, "anthropic_research_index.html"],
+	] as const)("on anthropic.com/%s, from links to the newest posts only", (directory, html, fixture) => {
+		const slugs = anthropicSlugs(html, directory);
+		expect(slugs.length).toBeGreaterThanOrEqual(15);
+		// Every link the Worker finds is a post the Python side finds too.
+		expect(EXPECTED[fixture]).toEqual(expect.arrayContaining(slugs));
 	});
 
-	it("on anthropic.com/news, from links to the newest posts only", () => {
-		const slugs = anthropicSlugs(newsHtml, "news");
-		expect(slugs.length).toBeGreaterThanOrEqual(10);
-		expect(EXPECTED["anthropic_news_index.html"]).toEqual(expect.arrayContaining(slugs));
-		// The payload lists the newest first; the links must cover them.
-		expect(slugs).toEqual(
-			expect.arrayContaining(EXPECTED["anthropic_news_index.html"].slice(0, 10)),
-		);
+	it("skips topic links to category pages", () => {
+		const html = `
+			<a class="TopicLink-module-scss-module__Ab12Cd__link" href="/news/product">x</a>
+			<a class="TableView-module-scss-module__Ab12Cd__title-link" href="/news/a-post">x</a>
+			<a href="https://www.anthropic.com/news/absolute/">x</a>
+			<a href="/research/team/interpretability">x</a>`;
+		expect(anthropicSlugs(html, "news")).toEqual(["a-post", "absolute"]);
+		expect(anthropicSlugs(html, "research")).toEqual([]);
 	});
 });
 
@@ -123,7 +127,7 @@ describe("poll", () => {
 	});
 
 	it("dispatches the workflow when a new slug appears on any index", async () => {
-		const newest = EXPECTED["anthropic_engineering_index.html"][0];
+		const newest = anthropicSlugs(researchHtml, "research")[0];
 		await env.STATE.put("listing-slugs", JSON.stringify(ALL_SLUGS.filter((s) => s !== newest)));
 		const f = fakeFetch();
 		expect(await poll(env, f.fn)).toEqual([newest]);

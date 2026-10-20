@@ -1,7 +1,7 @@
 # claude-blog-rss
 
 Scrapes Claude product announcements (`claude.com/resources/product-announcements`), the
-claude.dev blog, and anthropic.com news and engineering posts, and publishes them as one Atom 1.0 +
+claude.dev blog, and anthropic.com news and research posts, and publishes them as one Atom 1.0 +
 JSON Feed 1.1 feed via GitHub Pages, with per-year archives under RFC 5005. Until October 2026 it
 scraped the whole Claude blog (`claude.com/blog`, then `claude.com/resources/articles`); those
 posts stay in the corpus. Python 3.14, managed with `uv`.
@@ -26,7 +26,7 @@ Data flows one direction: `scrape` → `main` → `{jsonfeed, archives, feed}`. 
 
 ```bash
 uv sync --group dev
-uv run pytest -q          # 110 tests, all offline (HTML fixtures, no network)
+uv run pytest -q          # 114 tests, all offline (HTML fixtures, no network)
 uv run ruff check .
 uv run ruff format .
 uv run update-feed        # real run — hits the network
@@ -52,21 +52,29 @@ means the site moved, and the old code silently reported "no new posts" for days
 URL wins for a slug in several): the claude.com product-announcements listing (`list_slugs`, the
 articles listing filtered to one category; its cards link to `/resources/articles/<slug>`),
 claude.dev's `posts.json` (`list_claude_dev`; `rss.xml` and `llms.txt` list the same posts), and
-anthropic.com's `/news` and `/engineering` pages (`list_anthropic`). anthropic.com has no feed,
-and its sitemap's `lastmod` is the last edit, not the publish date, so it's useless for discovery.
-Its index pages render links to only the ten newest news posts, but the embedded Next.js payload
-(`self.__next_f.push([1,"…"])` chunks) carries every post as a `{"_type":"post",…}` (news) or
-`{"_type":"engineeringArticle",…}` object; `parse_anthropic_index` joins the chunks, JSON-decodes
-each such object whole, and takes its `slug.current`. Don't go back to regex-matching slugs out of
-the payload: a post without a slug would take the next object's. Each index raises if it yields
-nothing, like the listing, and any index failing fails the run. An index entry that redirects to a URL in
-`SKIPPED_URL_PREFIXES` (e.g. an engineering post that became a `code.claude.com/docs` page) is
-skipped quietly by `fetch_post`; add to that tuple rather than letting it log an error every run. Every index lists all its posts
-on one page, so a normal run sees the whole of claude.dev, news, and engineering; only the
-claude.com listing paginates.
+anthropic.com's `/news` and `/research` pages (`list_anthropic`). anthropic.com has no feed.
+In October 2026 it folded `/engineering` into `/research` (`/engineering/<slug>` 308-redirects to
+`/research/<slug>`; stored posts keep their old URL and slug) and moved every post to one CMS type.
+Each index page renders links to its ~20–25 newest posts; the embedded Next.js payload
+(`self.__next_f.push([1,"…"])` chunks) carries more, ~60–80, each as a
+`{"_id":"…","_type":"article",…}` object with an `articleType` of `news` or `research`. Both
+pages carry both types, so `parse_anthropic_index` keeps only the page's own (`ANTHROPIC_INDEXES`),
+and skips objects with a `linkedUrl` (they live elsewhere, e.g. `/features/…`). It joins the
+chunks, JSON-decodes each such object whole, and takes its `slug.current`. Don't go back to
+regex-matching slugs out of the payload: a post without a slug would take the next object's.
+Rendered links are added too, except `TopicLink…__link` anchors, which go to category pages at
+the same depth (`/news/product`). Each index raises if it yields nothing, like the listing, and
+any index failing fails the run. An index entry that redirects to a URL in
+`SKIPPED_URL_PREFIXES` (e.g. an old engineering post that became a `code.claude.com/docs` page) is
+skipped quietly by `fetch_post`; add to that tuple rather than letting it log an error every run.
+claude.dev lists all its posts on one page; anthropic.com's pages only the newest, which is
+enough for a normal run. The full set is only in anthropic.com's sitemap (its `lastmod` is the
+last edit, not the publish date, so it can't date anything): `--backfill` reads it for
+`/research/<slug>` posts (`list_anthropic_sitemap`), alongside every page of the claude.com
+listing. Not for `/news`, whose sitemap entries include category pages.
 
 **Some listing cards are posts on other hosts**, scraped for full text like the rest:
-`claude.dev/blog` and `anthropic.com` (news, engineering, model-launch pages). These are matched
+`claude.dev/blog` and `anthropic.com` (news, research, model-launch pages). These are matched
 only on listing cards (`ResourceCard…__card`), because the nav links to anthropic.com too, and
 only on hosts with a parser; any other off-site card is logged and skipped. Their slug is the URL's
 last path segment, which is deliberate: several are old `claude.com/blog` posts that moved to
@@ -163,8 +171,8 @@ calls `workflow_dispatch` on `update-feed.yml`. KV is written only after a succe
 failures retry next tick, and known slugs accumulate rather than being replaced, so an index that
 fails one tick doesn't make its posts look new the next; the poll still throws so the failure is
 visible. Its parsers mirror `parse_listing`, `parse_claude_dev_index` and `parse_anthropic_index`,
-except that for anthropic.com it reads only rendered links: decoding the news payload costs ~6 ms of
-CPU, the whole budget, and the links already cover the newest posts. Change one side, change both.
+except that for anthropic.com it reads only rendered links (still skipping topic links): decoding
+the payload costs ~6 ms of CPU, the whole budget, and the links already cover the newest posts. Change one side, change both.
 `tests/fixtures/index_slugs.json` holds what the Python parsers find in each index fixture; both
 `tests/test_scrape.py` and `worker/test/index.spec.ts` check against it. Regenerate it from the
 Python parsers when you refresh a fixture. All four parsers together take ~3–4.5 ms (decode

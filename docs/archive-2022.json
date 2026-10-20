@@ -3,7 +3,7 @@
   "title": "Claude Blog (unofficial)",
   "home_page_url": "https://claude.com/blog",
   "feed_url": "https://dave-atx.github.io/anthropic-rss/archive-2022.json",
-  "description": "Unofficial feed of Claude product announcements, the claude.dev blog, and Anthropic news and engineering posts, with full text. Content © Anthropic.",
+  "description": "Unofficial feed of Claude product announcements, the claude.dev blog, and Anthropic news and research posts, with full text. Content © Anthropic.",
   "icon": "https://cdn.prod.website-files.com/6889473510b50328dbb70ae6/68c33859cc6cd903686c66a2_apple-touch-icon.png",
   "language": "en",
   "authors": [
@@ -12,6 +12,158 @@
     }
   ],
   "items": [
+    {
+      "id": "tag:claude.com,2026:discovering-language-model-behaviors-with-model-written-evaluations",
+      "url": "https://www.anthropic.com/research/discovering-language-model-behaviors-with-model-written-evaluations",
+      "title": "Discovering Language Model Behaviors with Model-Written Evaluations",
+      "summary": "154 automatically generated evaluation datasets reveal sycophancy and other concerning behaviors that grow with model size and RLHF.",
+      "content_html": "<p><a href=\"https://arxiv.org/abs/2212.09251\">Read Paper</a></p><div class=\"Body-module-scss-module__PA4F1q__body\" data-article-body=\"true\" data-theme=\"ivory\"><h3 class=\"typography-module-scss-module__tOQyXa__headline-5 Body-module-scss-module__PA4F1q__reading-column post-section\" data-component=\"Headline\" data-selectable=\"true\" id=\"abstract\">Abstract</h3><p class=\"Body-module-scss-module__PA4F1q__reading-column post-text\" data-selectable=\"true\">As language models (LMs) scale, they develop many novel behaviors, good and bad, exacerbating the need to evaluate how they behave. Prior work creates evaluations with crowdwork (which is time-consuming and expensive) or existing data sources (which are not always available). Here, we automatically generate evaluations with LMs. We explore approaches with varying amounts of human effort, from instructing LMs to write yes/no questions to making complex Winogender schemas with multiple stages of LM-based generation and filtering. Crowdworkers rate the examples as highly relevant and agree with 90-100% of labels, sometimes more so than corresponding human-written datasets. We generate 154 datasets and discover new cases of inverse scaling where LMs get worse with size. Larger LMs repeat back a dialog user's preferred answer (\"sycophancy\") and express greater desire to pursue concerning goals like resource acquisition and goal preservation. We also find some of the first examples of inverse scaling in RL from Human Feedback (RLHF), where more RLHF makes LMs worse. For example, RLHF makes LMs express stronger political views (on gun rights and immigration) and a greater desire to avoid shut down. Overall, LM-written evaluations are high-quality and let us quickly discover many novel LM behaviors.</p></div>",
+      "image": "https://www-cdn.anthropic.com/images/4zrzovbb/website/6d4a0d28992ade92d6fa63646fd9c9d318245c6c-2400x1260.jpg",
+      "date_published": "2022-12-19T00:00:00+00:00",
+      "tags": [
+        "Alignment",
+        "Safety evaluations",
+        "Sycophancy",
+        "Scaling laws",
+        "Training"
+      ],
+      "_claude_blog_rss": {
+        "slug": "discovering-language-model-behaviors-with-model-written-evaluations",
+        "date_str": "December 19, 2022"
+      }
+    },
+    {
+      "id": "tag:claude.com,2026:constitutional-ai-harmlessness-from-ai-feedback",
+      "url": "https://www.anthropic.com/research/constitutional-ai-harmlessness-from-ai-feedback",
+      "title": "Constitutional AI: Harmlessness from AI feedback",
+      "summary": "Constitutional AI trains a harmless but non-evasive assistant through self-critique and RL from AI feedback, with far fewer human labels.",
+      "content_html": "<p><a href=\"https://arxiv.org/abs/2212.08073\">Read Paper</a></p><div class=\"Body-module-scss-module__PA4F1q__body\" data-article-body=\"true\" data-theme=\"ivory\"><h3 class=\"typography-module-scss-module__tOQyXa__headline-5 Body-module-scss-module__PA4F1q__reading-column post-section\" data-component=\"Headline\" data-selectable=\"true\" id=\"abstract\">Abstract</h3><p class=\"Body-module-scss-module__PA4F1q__reading-column post-text\" data-selectable=\"true\">As AI systems become more capable, we would like to enlist their help to supervise other AIs. We experiment with methods for training a harmless AI assistant through self-improvement, without any human labels identifying harmful outputs. The only human oversight is provided through a list of rules or principles, and so we refer to the method as 'Constitutional AI'. The process involves both a supervised learning and a reinforcement learning phase. In the supervised phase we sample from an initial model, then generate self-critiques and revisions, and then finetune the original model on revised responses. In the RL phase, we sample from the finetuned model, use a model to evaluate which of the two samples is better, and then train a preference model from this dataset of AI preferences. We then train with RL using the preference model as the reward signal, i.e. we use 'RL from AI Feedback' (RLAIF). As a result we are able to train a harmless but non-evasive AI assistant that engages with harmful queries by explaining its objections to them. Both the SL and RL methods can leverage chain-of-thought style reasoning to improve the human-judged performance and transparency of AI decision making. These methods make it possible to control AI behavior more precisely and with far fewer human labels.</p><h3 class=\"typography-module-scss-module__tOQyXa__headline-5 Body-module-scss-module__PA4F1q__reading-column post-section\" data-component=\"Headline\" data-selectable=\"true\" id=\"policy-memo\">Policy Memo</h3><p class=\"Body-module-scss-module__PA4F1q__reading-column post-text\" data-selectable=\"true\"><a href=\"https://www-cdn.anthropic.com/7512771452629584566b6303311496c262da1006/Anthropic_ConstitutionalAI_v2.pdf\" rel=\"noopener\" target=\"_blank\">Constitutional AI Policy Memo</a></p></div>",
+      "image": "https://www-cdn.anthropic.com/images/4zrzovbb/website/6d4a0d28992ade92d6fa63646fd9c9d318245c6c-2400x1260.jpg",
+      "date_published": "2022-12-15T00:00:00+00:00",
+      "tags": [
+        "Alignment",
+        "Constitutional AI",
+        "Training",
+        "Reasoning"
+      ],
+      "_claude_blog_rss": {
+        "slug": "constitutional-ai-harmlessness-from-ai-feedback",
+        "date_str": "December 15, 2022"
+      }
+    },
+    {
+      "id": "tag:claude.com,2026:measuring-progress-on-scalable-oversight-for-large-language-models",
+      "url": "https://www.anthropic.com/research/measuring-progress-on-scalable-oversight-for-large-language-models",
+      "title": "Measuring progress on scalable oversight for large language models",
+      "summary": "Humans working with an unreliable LLM assistant outperformed both the model alone and unaided humans on challenging question answering.",
+      "content_html": "<p><a href=\"https://arxiv.org/abs/2211.03540\">Read Paper</a></p><div class=\"Body-module-scss-module__PA4F1q__body\" data-article-body=\"true\" data-theme=\"ivory\"><h3 class=\"typography-module-scss-module__tOQyXa__headline-5 Body-module-scss-module__PA4F1q__reading-column post-section\" data-component=\"Headline\" data-selectable=\"true\" id=\"abstract\">Abstract</h3><p class=\"Body-module-scss-module__PA4F1q__reading-column post-text\" data-selectable=\"true\">Developing safe and useful general-purpose AI systems will require us to make progress on scalable oversight: the problem of supervising systems that potentially outperform us on most skills relevant to the task at hand. Empirical work on this problem is not straightforward, since we do not yet have systems that broadly exceed our abilities. This paper discusses one of the major ways we think about this problem, with a focus on ways it can be studied empirically. We first present an experimental design centered on tasks for which human specialists succeed but unaided humans and current general AI systems fail. We then present a proof-of-concept experiment meant to demonstrate a key feature of this experimental design and show its viability with two question-answering tasks: MMLU and time-limited QuALITY. On these tasks, we find that human participants who interact with an unreliable large-language-model dialog assistant through chat -- a trivial baseline strategy for scalable oversight -- substantially outperform both the model alone and their own unaided performance. These results are an encouraging sign that scalable oversight will be tractable to study with present models and bolster recent findings that large language models can productively assist humans with difficult tasks.</p></div>",
+      "image": "https://www-cdn.anthropic.com/images/4zrzovbb/website/6d4a0d28992ade92d6fa63646fd9c9d318245c6c-2400x1260.jpg",
+      "date_published": "2022-11-04T00:00:00+00:00",
+      "tags": [
+        "Alignment",
+        "Measurement and mitigation",
+        "Benchmarks",
+        "Productivity"
+      ],
+      "_claude_blog_rss": {
+        "slug": "measuring-progress-on-scalable-oversight-for-large-language-models",
+        "date_str": "November 4, 2022"
+      }
+    },
+    {
+      "id": "tag:claude.com,2026:toy-models-of-superposition",
+      "url": "https://www.anthropic.com/research/toy-models-of-superposition",
+      "title": "Toy models of superposition",
+      "summary": "Small networks can represent more features than they have dimensions when features are sparse, a phenomenon called superposition.",
+      "content_html": "<p><a href=\"https://transformer-circuits.pub/2022/toy_model/index.html\">Read Paper</a></p><div class=\"Body-module-scss-module__PA4F1q__body\" data-article-body=\"true\" data-theme=\"ivory\"><h4 class=\"typography-module-scss-module__tOQyXa__headline-6 Body-module-scss-module__PA4F1q__reading-column post-subsection\" data-component=\"Headline\" data-selectable=\"true\" id=\"abstract\">Abstract</h4><p class=\"Body-module-scss-module__PA4F1q__reading-column post-text\" data-selectable=\"true\">In this paper, we use toy models — small ReLU networks trained on synthetic data with sparse input features — to investigate how and when models represent more features than they have dimensions. We call this phenomenon superposition. When features are sparse, superposition allows compression beyond what a linear model would do, at the cost of \"interference\" that requires nonlinear filtering.</p></div>",
+      "image": "https://www-cdn.anthropic.com/images/4zrzovbb/website/6d4a0d28992ade92d6fa63646fd9c9d318245c6c-2400x1260.jpg",
+      "date_published": "2022-09-14T00:00:00+00:00",
+      "tags": [
+        "Interpretability",
+        "Training"
+      ],
+      "_claude_blog_rss": {
+        "slug": "toy-models-of-superposition",
+        "date_str": "September 14, 2022"
+      }
+    },
+    {
+      "id": "tag:claude.com,2026:red-teaming-language-models-to-reduce-harms-methods-scaling-behaviors-and-lessons-learned",
+      "url": "https://www.anthropic.com/research/red-teaming-language-models-to-reduce-harms-methods-scaling-behaviors-and-lessons-learned",
+      "title": "Red teaming language models to reduce harms: methods, scaling behaviors, and lessons learned",
+      "summary": "Red teaming models across scales shows RLHF models become harder to attack as they grow, with a released dataset of 38,961 attacks.",
+      "content_html": "<p><a href=\"https://arxiv.org/abs/2209.07858\">Read Paper</a></p><div class=\"Body-module-scss-module__PA4F1q__body\" data-article-body=\"true\" data-theme=\"ivory\"><h3 class=\"typography-module-scss-module__tOQyXa__headline-5 Body-module-scss-module__PA4F1q__reading-column post-section\" data-component=\"Headline\" data-selectable=\"true\" id=\"abstract\">Abstract</h3><p class=\"Body-module-scss-module__PA4F1q__reading-column post-text\" data-selectable=\"true\">We describe our early efforts to red team language models in order to simultaneously discover, measure, and attempt to reduce their potentially harmful outputs. We make three main contributions. First, we investigate scaling behaviors for red teaming across 3 model sizes (2.7B, 13B, and 52B parameters) and 4 model types: a plain language model (LM); an LM prompted to be helpful, honest, and harmless; an LM with rejection sampling; and a model trained to be helpful and harmless using reinforcement learning from human feedback (RLHF). We find that the RLHF models are increasingly difficult to red team as they scale, and we find a flat trend with scale for the other model types. Second, we release our dataset of 38,961 red team attacks for others to analyze and learn from. We provide our own analysis of the data and find a variety of harmful outputs, which range from offensive language to more subtly harmful non-violent unethical outputs. Third, we exhaustively describe our instructions, processes, statistical methodologies, and uncertainty about red teaming. We hope that this transparency accelerates our ability to work together as a community in order to develop shared norms, practices, and technical standards for how to red team language models.</p><h3 class=\"typography-module-scss-module__tOQyXa__headline-5 Body-module-scss-module__PA4F1q__reading-column post-section\" data-component=\"Headline\" data-selectable=\"true\" id=\"policy-memo\">Policy Memo</h3><p class=\"Body-module-scss-module__PA4F1q__reading-column post-text\" data-selectable=\"true\"><a href=\"https://www-cdn.anthropic.com/82564d4ec2451b2eed2e0796b7c658fc989f0c1a/Anthropic_RedTeaming.pdf\" rel=\"noopener\" target=\"_blank\">Red Teaming Policy Memo</a></p></div>",
+      "image": "https://www-cdn.anthropic.com/images/4zrzovbb/website/1ef505debb4ce2feb13bb0376d7dda7093811eda-1200x630.jpg",
+      "date_published": "2022-08-22T00:00:00+00:00",
+      "tags": [
+        "Societal Impacts",
+        "Red teaming",
+        "Scaling laws",
+        "Training",
+        "Measurement and mitigation",
+        "Open source",
+        "Transparency"
+      ],
+      "_claude_blog_rss": {
+        "slug": "red-teaming-language-models-to-reduce-harms-methods-scaling-behaviors-and-lessons-learned",
+        "date_str": "August 22, 2022"
+      }
+    },
+    {
+      "id": "tag:claude.com,2026:language-models-mostly-know-what-they-know",
+      "url": "https://www.anthropic.com/research/language-models-mostly-know-what-they-know",
+      "title": "Language models (mostly) know what they know",
+      "summary": "Larger models are well calibrated at judging whether their own answers are true, and can predict whether they know an answer before answering.",
+      "content_html": "<p><a href=\"https://arxiv.org/abs/2207.05221\">Read Paper</a></p><div class=\"Body-module-scss-module__PA4F1q__body\" data-article-body=\"true\" data-theme=\"ivory\"><h3 class=\"typography-module-scss-module__tOQyXa__headline-5 Body-module-scss-module__PA4F1q__reading-column post-section\" data-component=\"Headline\" data-selectable=\"true\" id=\"abstract\">Abstract</h3><p class=\"Body-module-scss-module__PA4F1q__reading-column post-text\" data-selectable=\"true\">We study whether language models can evaluate the validity of their own claims and predict which questions they will be able to answer correctly. We first show that larger models are well-calibrated on diverse multiple choice and true/false questions when they are provided in the right format. Thus we can approach self-evaluation on open-ended sampling tasks by asking models to first propose answers, and then to evaluate the probability \"P(True)\" that their answers are correct. We find encouraging performance, calibration, and scaling for P(True) on a diverse array of tasks. Performance at self-evaluation further improves when we allow models to consider many of their own samples before predicting the validity of one specific possibility. Next, we investigate whether models can be trained to predict \"P(IK)\", the probability that \"I know\" the answer to a question, without reference to any particular proposed answer. Models perform well at predicting P(IK) and partially generalize across tasks, though they struggle with calibration of P(IK) on new tasks. The predicted P(IK) probabilities also increase appropriately in the presence of relevant source materials in the context, and in the presence of hints towards the solution of mathematical word problems. We hope these observations lay the groundwork for training more honest models, and for investigating how honesty generalizes to cases where models are trained on objectives other than the imitation of human writing.</p></div>",
+      "image": "https://www-cdn.anthropic.com/images/4zrzovbb/website/6d4a0d28992ade92d6fa63646fd9c9d318245c6c-2400x1260.jpg",
+      "date_published": "2022-07-11T00:00:00+00:00",
+      "tags": [
+        "Alignment",
+        "Hallucination",
+        "Scaling laws",
+        "Measurement and mitigation"
+      ],
+      "_claude_blog_rss": {
+        "slug": "language-models-mostly-know-what-they-know",
+        "date_str": "July 11, 2022"
+      }
+    },
+    {
+      "id": "tag:claude.com,2026:softmax-linear-units",
+      "url": "https://www.anthropic.com/research/softmax-linear-units",
+      "title": "Softmax Linear Units",
+      "summary": "Replacing standard MLP activations with SoLU substantially increases the fraction of interpretable neurons with no performance loss.",
+      "content_html": "<p><a href=\"https://transformer-circuits.pub/2022/solu/index.html\">Read Paper</a></p><div class=\"Body-module-scss-module__PA4F1q__body\" data-article-body=\"true\" data-theme=\"ivory\"><h3 class=\"typography-module-scss-module__tOQyXa__headline-5 Body-module-scss-module__PA4F1q__reading-column post-section\" data-component=\"Headline\" data-selectable=\"true\" id=\"abstract\">Abstract</h3><p class=\"Body-module-scss-module__PA4F1q__reading-column post-text\" data-selectable=\"true\">In this paper, we report an architectural change which appears to substantially increase the fraction of MLP neurons which appear to be \"interpretable\" (i.e. respond to an articulable property of the input), at little to no cost to ML performance. Specifically, we replace the activation function with a softmax linear unit (which we term SoLU) and show that this significantly increases the fraction of neurons in the MLP layers which seem to correspond to readily human-understandable concepts, phrases, or categories on quick investigation, as measured by randomized and blinded experiments. We then study our SoLU models and use them to gain several new insights about how information is processed in transformers. However, we also discover some evidence that the superposition hypothesis is true and there is no free lunch: SoLU may be making some features more interpretable by “hiding” others and thus making them even more deeply uninterpretable. Despite this, SoLU still seems like a net win, as in practical terms it substantially increases the fraction of neurons we are able to understand.<br/></p></div>",
+      "image": "https://www-cdn.anthropic.com/images/4zrzovbb/website/6d4a0d28992ade92d6fa63646fd9c9d318245c6c-2400x1260.jpg",
+      "date_published": "2022-06-17T00:00:00+00:00",
+      "tags": [
+        "Interpretability",
+        "Training",
+        "Alignment"
+      ],
+      "_claude_blog_rss": {
+        "slug": "softmax-linear-units",
+        "date_str": "June 17, 2022"
+      }
+    },
+    {
+      "id": "tag:claude.com,2026:scaling-laws-and-interpretability-of-learning-from-repeated-data",
+      "url": "https://www.anthropic.com/research/scaling-laws-and-interpretability-of-learning-from-repeated-data",
+      "title": "Scaling laws and interpretability of learning from repeated data",
+      "summary": "Repeating just 0.1% of training data 100 times made an 800M-parameter model perform as poorly as a 400M one.",
+      "content_html": "<p><a href=\"https://arxiv.org/abs/2205.10487\">Read Paper</a></p><div class=\"Body-module-scss-module__PA4F1q__body\" data-article-body=\"true\" data-theme=\"ivory\"><h3 class=\"typography-module-scss-module__tOQyXa__headline-5 Body-module-scss-module__PA4F1q__reading-column post-section\" data-component=\"Headline\" data-selectable=\"true\" id=\"abstract\">Abstract</h3><p class=\"Body-module-scss-module__PA4F1q__reading-column post-text\" data-selectable=\"true\">Recent large language models have been trained on vast datasets, but also often on repeated data, either intentionally for the purpose of upweighting higher quality data, or unintentionally because data deduplication is not perfect and the model is exposed to repeated data at the sentence, paragraph, or document level. Some works have reported substantial negative performance effects of this repeated data. In this paper we attempt to study repeated data systematically and to understand its effects mechanistically. To do this, we train a family of models where most of the data is unique but a small fraction of it is repeated many times. We find a strong double descent phenomenon, in which repeated data can lead test loss to increase midway through training. A predictable range of repetition frequency leads to surprisingly severe degradation in performance. For instance, performance of an 800M parameter model can be degraded to that of a 2x smaller model (400M params) by repeating 0.1% of the data 100 times, despite the other 90% of the training tokens remaining unique. We suspect there is a range in the middle where the data can be memorized and doing so consumes a large fraction of the model's capacity, and this may be where the peak of degradation occurs. Finally, we connect these observations to recent mechanistic interpretability work - attempting to reverse engineer the detailed computations performed by the model - by showing that data repetition disproportionately damages copying and internal structures associated with generalization, such as induction heads, providing a possible mechanism for the shift from generalization to memorization. Taken together, these results provide a hypothesis for why repeating a relatively small fraction of data in large language models could lead to disproportionately large harms to performance.</p></div>",
+      "image": "https://www-cdn.anthropic.com/images/4zrzovbb/website/6d4a0d28992ade92d6fa63646fd9c9d318245c6c-2400x1260.jpg",
+      "date_published": "2022-05-21T00:00:00+00:00",
+      "tags": [
+        "Interpretability",
+        "Scaling laws",
+        "Training"
+      ],
+      "_claude_blog_rss": {
+        "slug": "scaling-laws-and-interpretability-of-learning-from-repeated-data",
+        "date_str": "May 21, 2022"
+      }
+    },
     {
       "id": "tag:claude.com,2026:anthropic-raises-series-b-to-build-safe-reliable-ai",
       "url": "https://www.anthropic.com/news/anthropic-raises-series-b-to-build-safe-reliable-ai",
@@ -27,6 +179,63 @@
         "slug": "anthropic-raises-series-b-to-build-safe-reliable-ai",
         "date_str": "April 29, 2022",
         "pub_date_precise": true
+      }
+    },
+    {
+      "id": "tag:claude.com,2026:training-a-helpful-and-harmless-assistant-with-reinforcement-learning-from-human-feedback",
+      "url": "https://www.anthropic.com/research/training-a-helpful-and-harmless-assistant-with-reinforcement-learning-from-human-feedback",
+      "title": "Training a Helpful and Harmless Assistant with Reinforcement Learning from Human Feedback",
+      "summary": "RLHF fine-tuning improved performance on almost all NLP evaluations, showing essentially no alignment tax for helpfulness and harmlessness.",
+      "content_html": "<p><a href=\"https://arxiv.org/abs/2204.05862\">Read Paper</a></p><div class=\"Body-module-scss-module__PA4F1q__body\" data-article-body=\"true\" data-theme=\"ivory\"><h3 class=\"typography-module-scss-module__tOQyXa__headline-5 Body-module-scss-module__PA4F1q__reading-column post-section\" data-component=\"Headline\" data-selectable=\"true\" id=\"abstract\">Abstract</h3><p class=\"Body-module-scss-module__PA4F1q__reading-column post-text\" data-selectable=\"true\">We apply preference modeling and reinforcement learning from human feedback (RLHF) to finetune language models to act as helpful and harmless assistants. We find this alignment training improves performance on almost all NLP evaluations, and is fully compatible with training for specialized skills such as python coding and summarization. We explore an iterated online mode of training, where preference models and RL policies are updated on a weekly cadence with fresh human feedback data, efficiently improving our datasets and models. Finally, we investigate the robustness of RLHF training, and identify a roughly linear relation between the RL reward and the square root of the KL divergence between the policy and its initialization. Alongside our main results, we perform peripheral analyses on calibration, competing objectives, and the use of OOD detection, compare our models with human writers, and provide samples from our models using prompts appearing in recent related work.</p></div>",
+      "image": "https://www-cdn.anthropic.com/images/4zrzovbb/website/6d4a0d28992ade92d6fa63646fd9c9d318245c6c-2400x1260.jpg",
+      "date_published": "2022-04-12T00:00:00+00:00",
+      "tags": [
+        "Alignment",
+        "Training",
+        "Scaling laws",
+        "Benchmarks"
+      ],
+      "_claude_blog_rss": {
+        "slug": "training-a-helpful-and-harmless-assistant-with-reinforcement-learning-from-human-feedback",
+        "date_str": "April 12, 2022"
+      }
+    },
+    {
+      "id": "tag:claude.com,2026:in-context-learning-and-induction-heads",
+      "url": "https://www.anthropic.com/research/in-context-learning-and-induction-heads",
+      "title": "In-context learning and induction heads",
+      "summary": "We observe a sharp phase change early in training when induction heads form and in-context learning jumps, across models from 13M to 13B parameters.",
+      "content_html": "<p><a href=\"https://transformer-circuits.pub/2022/in-context-learning-and-induction-heads/index.html\">Read the paper</a></p><div class=\"Body-module-scss-module__PA4F1q__body\" data-article-body=\"true\" data-theme=\"ivory\"></div>",
+      "image": "https://www-cdn.anthropic.com/images/4zrzovbb/website/6d4a0d28992ade92d6fa63646fd9c9d318245c6c-2400x1260.jpg",
+      "date_published": "2022-03-08T00:00:00+00:00",
+      "tags": [
+        "Interpretability",
+        "Training",
+        "Scaling laws"
+      ],
+      "_claude_blog_rss": {
+        "slug": "in-context-learning-and-induction-heads",
+        "date_str": "March 8, 2022"
+      }
+    },
+    {
+      "id": "tag:claude.com,2026:predictability-and-surprise-in-large-generative-models",
+      "url": "https://www.anthropic.com/research/predictability-and-surprise-in-large-generative-models",
+      "title": "Predictability and Surprise in Large Generative Models",
+      "summary": "Aggregate performance of large models is predictable via scaling laws, yet specific capabilities emerge unpredictably.",
+      "content_html": "<p><a href=\"https://arxiv.org/abs/2202.07785\">Read Paper</a></p><div class=\"Body-module-scss-module__PA4F1q__body\" data-article-body=\"true\" data-theme=\"ivory\"><h3 class=\"typography-module-scss-module__tOQyXa__headline-5 Body-module-scss-module__PA4F1q__reading-column post-section\" data-component=\"Headline\" data-selectable=\"true\" id=\"abstract\">Abstract</h3><p class=\"Body-module-scss-module__PA4F1q__reading-column post-text\" data-selectable=\"true\">Large-scale pre-training has recently emerged as a technique for creating capable, general purpose, generative models such as GPT-3, Megatron-Turing NLG, Gopher, and many others. In this paper, we highlight a counterintuitive property of such models and discuss the policy implications of this property. Namely, these generative models have an unusual combination of predictable loss on a broad training distribution (as embodied in their \"scaling laws\"), and unpredictable specific capabilities, inputs, and outputs. We believe that the high-level predictability and appearance of useful capabilities drives rapid development of such models, while the unpredictable qualities make it difficult to anticipate the consequences of model deployment. We go through examples of how this combination can lead to socially harmful behavior with examples from the literature and real world observations, and we also perform two novel experiments to illustrate our point about harms from unpredictability. Furthermore, we analyze how these conflicting properties combine to give model developers various motivations for deploying these models, and challenges that can hinder deployment. We conclude with a list of possible interventions the AI community may take to increase the chance of these models having a beneficial impact. We intend this paper to be useful to policymakers who want to understand and regulate AI systems, technologists who care about the potential policy impact of their work, and academics who want to analyze, critique, and potentially develop large generative models.</p><h4 class=\"typography-module-scss-module__tOQyXa__headline-6 Body-module-scss-module__PA4F1q__reading-column post-subsection\" data-component=\"Headline\" data-selectable=\"true\" id=\"policy-memo\">Policy Memo</h4><p class=\"Body-module-scss-module__PA4F1q__reading-column post-text\" data-selectable=\"true\"><a href=\"https://www-cdn.anthropic.com/4ff80d7f8a98bf096cd543ec61ddc50de3ad8b16/Anthropic_PredictabilityAndSurprise.pdf\" rel=\"noopener\" target=\"_blank\">Predictability and Surprise Memo</a></p></div>",
+      "image": "https://www-cdn.anthropic.com/images/4zrzovbb/website/1ec22f5af64f0f7bb673a553df3dae143599194b-1200x630.jpg",
+      "date_published": "2022-02-15T00:00:00+00:00",
+      "tags": [
+        "Societal Impacts",
+        "Scaling laws",
+        "Informed lawmakers",
+        "Measurement and mitigation",
+        "Safety evaluations"
+      ],
+      "_claude_blog_rss": {
+        "slug": "predictability-and-surprise-in-large-generative-models",
+        "date_str": "February 15, 2022"
       }
     }
   ]

@@ -1,7 +1,7 @@
 """Discover and scrape posts from Anthropic's sites.
 
 Four indexes are read (see `discover`): claude.com's product-announcements
-listing, claude.dev's post index, and anthropic.com's news and engineering
+listing, claude.dev's post index, and anthropic.com's news and research
 pages. Every post is keyed by the last segment of its URL, its slug.
 
 The blog lived at claude.com/blog (Webflow) until October 2026, when it moved
@@ -9,6 +9,8 @@ to claude.com/resources/articles (Next.js). Old /blog/<slug> URLs 308-redirect
 to the same slug under the new path, so slugs, and the tag: ids built from
 them, carry over unchanged. Several old claude.com/blog posts moved to
 claude.dev or anthropic.com; keying on the last segment keeps their entry ids.
+The same goes for anthropic.com/engineering, folded into /research in October
+2026: /engineering/<slug> 308-redirects to /research/<slug>.
 """
 
 import html
@@ -31,14 +33,16 @@ BASE_URL = "https://claude.com/resources/articles"
 LISTING_URL = "https://claude.com/resources/product-announcements"
 CLAUDE_DEV_INDEX_URL = "https://claude.dev/posts.json"
 ANTHROPIC_URL = "https://www.anthropic.com"
-# anthropic.com index pages, with the CMS type of the posts they list. The
-# rendered HTML links only the first few; the page's embedded Next.js data
-# carries every one.
-ANTHROPIC_INDEXES = {"news": "post", "engineering": "engineeringArticle"}
-# Index entries that redirect to one of these aren't posts (an engineering
-# "post" that is now a docs page). Matched on the URL after redirects, so
-# they're still requested once per run, but skipped quietly.
-SKIPPED_URL_PREFIXES = ("https://code.claude.com/docs/",)
+# anthropic.com index pages, with the `articleType` of the posts they list.
+# Each page's embedded Next.js data carries its newest ~60-80 posts, of both
+# types; older research posts are only in the sitemap, read on a backfill.
+ANTHROPIC_INDEXES = {"news": "news", "research": "research"}
+ANTHROPIC_SITEMAP_URL = f"{ANTHROPIC_URL}/sitemap.xml"
+# Index entries that redirect to one of these aren't posts (an old engineering
+# "post" that is now a docs page, a research one now an Academy tutorial).
+# Matched on the URL after redirects, so they're still requested once per
+# run, but skipped quietly.
+SKIPPED_URL_PREFIXES = ("https://code.claude.com/docs/", "https://academy.claude.com/")
 SITEMAP_URL = "https://claude.com/sitemap.xml"
 PAGINATION_PARAM = "page"
 REQUEST_DELAY = 1.0
@@ -95,7 +99,7 @@ def list_slugs(page: int = 1) -> list[tuple[str, str]]:
     return results
 
 
-_LISTING_CARD = re.compile(r"^ResourceCard-module-scss-module__\w+__card$")
+_LISTING_CARD = re.compile(r"^ResourceCard-module-scss-module__[\w-]+__card$")
 
 
 def parse_listing(html_text: str) -> list[tuple[str, str]]:
@@ -162,9 +166,40 @@ def list_anthropic(directory: str) -> list[tuple[str, str]]:
     return results
 
 
+def list_anthropic_sitemap(directory: str) -> list[tuple[str, str]]:
+    """Return [(slug, url), ...] for every anthropic.com/<directory>/<slug> in
+    its sitemap, which, unlike the index pages, lists every post.
+
+    Only read on a backfill: the sitemap's lastmod is the last edit, so it
+    can't date a post, and an index page always carries the newest ones.
+    """
+    resp = get_session().get(ANTHROPIC_SITEMAP_URL, timeout=30)
+    resp.raise_for_status()
+    results = parse_anthropic_sitemap(resp.content, directory)
+    if not results:
+        raise RuntimeError(f"{ANTHROPIC_SITEMAP_URL} lists no {directory} posts")
+    return results
+
+
+def parse_anthropic_sitemap(xml_bytes: bytes, directory: str) -> list[tuple[str, str]]:
+    # Deeper paths (/research/team/<name>) are landing pages, not posts.
+    prefix = f"{ANTHROPIC_URL}/{directory}/"
+    results = []
+    for loc_el in ET.fromstring(xml_bytes).iterfind("sm:url/sm:loc", _SITEMAP_NS):
+        loc = (loc_el.text or "").strip().rstrip("/")
+        slug = loc.removeprefix(prefix)
+        if loc.startswith(prefix) and slug and "/" not in slug:
+            results.append((slug, loc))
+    return results
+
+
 # A chunk of the Next.js (RSC) payload: a JSON string literal holding part of
 # the stream. Chunks can split anywhere, so they're joined before parsing.
 _NEXT_PUSH = re.compile(r'self\.__next_f\.push\(\[1,("[^"\\]*(?:\\.[^"\\]*)*")\]\)')
+# Where an article object opens in the decoded payload.
+_ARTICLE_OPENING = re.compile(r'\{"_id":"[^"\\]*","_type":"article",')
+# A link to a category page (/news/product), on topic chips and table rows.
+_TOPIC_LINK = re.compile(r"^TopicLink-module-scss-module__[\w-]+__link$")
 
 
 def _next_payload(html_text: str) -> str:
@@ -172,34 +207,38 @@ def _next_payload(html_text: str) -> str:
 
 
 def parse_anthropic_index(html_text: str, directory: str) -> list[tuple[str, str]]:
-    """Return [(slug, url), ...] for an anthropic.com news or engineering page.
+    """Return [(slug, url), ...] for an anthropic.com news or research page.
 
     Posts come from the Next.js payload embedded in the page, where each is a
-    JSON object opening `{"_type":"<type>",` with a `slug.current` field; every
-    such object is decoded whole, so a slug is only ever taken from its own
-    post. Links in the rendered HTML are added too, so the newest posts don't
-    depend on the payload's shape alone. Deduped, payload order first.
+    JSON object opening `{"_id":"…","_type":"article",` with `articleType` and
+    `slug.current` fields; every such object is decoded whole, so a slug is
+    only ever taken from its own post. Both pages carry both types, so only
+    the page's own type is kept, and an article with a `linkedUrl` lives
+    elsewhere (/features/…, /economic-index), not at /<directory>/<slug>.
+    Links in the rendered HTML are added too, so the newest posts don't
+    depend on the payload's shape alone, except topic links, which go to
+    category pages at the same depth. Deduped, payload order first.
 
     The Worker reads only those links (the payload is too costly for its CPU
-    budget): news renders links to its ten newest posts, engineering to all.
+    budget); each page renders links to its newest posts.
     """
     payload = _next_payload(html_text)
-    opening = f'{{"_type":"{ANTHROPIC_INDEXES[directory]}",'
     decoder = json.JSONDecoder()
     slugs: list[str] = []
-    pos = payload.find(opening)
-    while pos != -1:
+    for m in _ARTICLE_OPENING.finditer(payload):
         try:
-            post, _end = decoder.raw_decode(payload, pos)
+            post, _end = decoder.raw_decode(payload, m.start())
         except json.JSONDecodeError:
-            pass
-        else:
-            slug = (post.get("slug") or {}).get("current")
-            if isinstance(slug, str) and slug and "/" not in slug:
-                slugs.append(slug)
-        pos = payload.find(opening, pos + 1)
-    href = re.compile(rf'href="(?:{re.escape(ANTHROPIC_URL)})?/{directory}/([^/?#"]+)/?"')
-    slugs += href.findall(html_text)
+            continue
+        if post.get("articleType") != ANTHROPIC_INDEXES[directory] or post.get("linkedUrl"):
+            continue
+        slug = (post.get("slug") or {}).get("current")
+        if isinstance(slug, str) and slug and "/" not in slug:
+            slugs.append(slug)
+    href = re.compile(rf"^(?:{re.escape(ANTHROPIC_URL)})?/{directory}/([^/?#]+)/?$")
+    for a in BeautifulSoup(html_text, "lxml").find_all("a", href=href):
+        if not any(_TOPIC_LINK.match(c) for c in a.get("class", [])):
+            slugs.append(href.match(a["href"])[1])
     return [(slug, f"{ANTHROPIC_URL}/{directory}/{slug}") for slug in dict.fromkeys(slugs)]
 
 
@@ -207,9 +246,11 @@ def discover(backfill: bool = False) -> list[tuple[str, str]]:
     """Return [(slug, url), ...] for every post the indexes list, deduped.
 
     The claude.com listing comes first, so a post it shares with another
-    index keeps the listing's URL. Only that listing paginates: page 1 unless
-    `backfill`. The others list every post on one page. Any index failing
-    raises, like a listing failure, since a partial view can't be trusted.
+    index keeps the listing's URL. Only the claude.com listing paginates: page
+    1 unless `backfill`. claude.dev lists every post; anthropic.com's pages
+    only the newest, so a backfill adds its sitemap's research posts. Any
+    index failing raises, like a listing failure, since a partial view can't
+    be trusted.
     """
     found: dict[str, str] = {}
     sources = [
@@ -217,6 +258,8 @@ def discover(backfill: bool = False) -> list[tuple[str, str]]:
         list_claude_dev,
         *(lambda d=d: list_anthropic(d) for d in ANTHROPIC_INDEXES),
     ]
+    if backfill:
+        sources.append(lambda: list_anthropic_sitemap("research"))
     for i, source in enumerate(sources):
         if i:
             time.sleep(REQUEST_DELAY)
@@ -304,17 +347,27 @@ def _parse_claude_dev(soup: BeautifulSoup, url: str) -> Post:
     )
 
 
-_ANTHROPIC_BODY = re.compile(r"^Body-module-scss-module__\w+__body$")
-_ANTHROPIC_FOOTNOTES = re.compile(r"^MooFootnotes-module-scss-module__\w+__footnotes$")
-_ANTHROPIC_SUBJECTS = re.compile(r"^PostDetail-module-scss-module__\w+__subjects$")
+_ANTHROPIC_BODY = re.compile(r"^Body-module-scss-module__[\w-]+__body$")
+_ANTHROPIC_FOOTNOTES = re.compile(r"^MooFootnotes-module-scss-module__[\w-]+__footnotes$")
+_ANTHROPIC_SUBJECTS = re.compile(r"^PostDetail-module-scss-module__[\w-]+__subjects$")
+# Since October 2026 the page hero holds the category link, and on a research
+# post that is a paper elsewhere, the link to it ("Read the paper").
+_ANTHROPIC_HERO_METADATA = re.compile(r"^ArticleHero-module-scss-module__[\w-]+__Metadata$")
+_ANTHROPIC_HERO_ACTIONS = re.compile(r"^Actions-module-scss-module__[\w-]+__Actions$")
 
 
 def _parse_anthropic(soup: BeautifulSoup, url: str) -> Post:
-    """An anthropic.com news, engineering, or model-launch page.
+    """An anthropic.com news, research, or model-launch page.
 
     All three put the body in a `Body` CSS-module div inside <article>; launch
     pages add a footnotes section after it. Testimonial cards nest their own
-    `Body` divs, so only outermost ones are taken.
+    `Body` divs, so only outermost ones are taken. The hero's action links
+    lead the body: for a paper published elsewhere, the body is often empty
+    and that link is the post.
+
+    Categories come from the old `PostDetail` subjects list, or on the
+    current pages from the hero's links: its category (a news category, or
+    the research team), then its topics.
     """
     root = soup.find("article") or soup
     bodies = [
@@ -323,12 +376,23 @@ def _parse_anthropic(soup: BeautifulSoup, url: str) -> Post:
         if not el.find_parent(class_=_ANTHROPIC_BODY)
     ]
     bodies += root.find_all(class_=_ANTHROPIC_FOOTNOTES)
+    actions = root.find(class_=_ANTHROPIC_HERO_ACTIONS)
+    links = actions.find_all("a", href=True) if actions else []
+    if links:
+        lead = soup.new_tag("p")
+        for i, a in enumerate(links):
+            if i:
+                lead.append(" · ")
+            link = soup.new_tag("a", href=a["href"])
+            link.string = a.get_text(" ", strip=True)
+            lead.append(link)
+        bodies.insert(0, lead)
     subjects = soup.find(class_=_ANTHROPIC_SUBJECTS)
-    categories = (
-        [t for t in (el.get_text(strip=True) for el in subjects.find_all("span")) if t]
-        if subjects
-        else []
-    )
+    if subjects:
+        tags = subjects.find_all("span")
+    else:
+        tags = [a for m in root.find_all(class_=_ANTHROPIC_HERO_METADATA) for a in m.find_all("a")]
+    categories = list(dict.fromkeys(t for t in (el.get_text(strip=True) for el in tags) if t))
     # Some launch pages show the date only as hero text, with no <time>.
     eyebrow = soup.find("p", class_="eyebrow")
     return _external_post(
@@ -480,9 +544,9 @@ def _module_class(component: str, name: str) -> re.Pattern[str]:
     """Match a CSS-module class token like `DetailSidebar-module-scss-module__3RcHtG__label`.
 
     The middle segment is a build hash that changes on redeploys, so match
-    around it rather than on the whole token.
+    around it rather than on the whole token. It can contain `-` (`yAH-gG`).
     """
-    return re.compile(rf"^{component}-module-scss-module__\w+__{name}$")
+    return re.compile(rf"^{component}-module-scss-module__[\w-]+__{name}$")
 
 
 _SIDEBAR_LABEL = _module_class("DetailSidebar", "label")
