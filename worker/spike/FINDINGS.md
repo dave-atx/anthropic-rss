@@ -69,12 +69,13 @@ per-request overhead.
   copied the growing string each time and made it *slower* than a full scan
   (11 - 15 ms live). Collecting chunk strings in an array, searching only the
   new chunk plus a 64-char tail, and joining once fixed it.
-- **Every request returned `outcome: "ok"`**, including one at 432 ms of CPU.
-  Either the account isn't on Workers Free or enforcement is lenient (the docs
-  say isolates get "some built-in flexibility" for occasional overruns and
-  Error 1102 when it's consistent). The wrangler OAuth token couldn't read the
-  account's subscriptions, so the plan wasn't confirmed. Don't take "ok" as
-  proof that something fits in 10 ms.
+- **Every request returned `outcome: "ok"`**, including one at 432 ms of CPU,
+  and the account **is on Workers Free** (Dave confirmed). Over these
+  benchmarks dozens of requests ran past 10 ms (HTMLRewriter, every time) and
+  none was terminated. The docs say isolates get "some built-in flexibility"
+  for occasional overruns and Error 1102 when it's consistent, so the 10 ms
+  limit is enforced loosely. Don't design around that: "ok" here doesn't mean
+  something fits, and enforcement could tighten.
 
 ## Not done yet
 
