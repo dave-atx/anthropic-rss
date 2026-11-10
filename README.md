@@ -3,6 +3,7 @@
 Unofficial Atom and JSON Feed mirror, with full article text, of:
 
 - Claude product announcements ([claude.com/resources/product-announcements](https://claude.com/resources/product-announcements))
+- Claude best practices ([claude.com/resources/best-practices](https://claude.com/resources/best-practices)), from November 2026
 - the claude.dev blog ([claude.dev](https://claude.dev/))
 - Anthropic news ([anthropic.com/news](https://www.anthropic.com/news))
 - Anthropic research, which includes the former engineering blog ([anthropic.com/research](https://www.anthropic.com/research))
@@ -49,8 +50,8 @@ A year is *closed* once it is past: no post can be added to it, so its documents
 
 ## How it works
 
-A small Cloudflare Worker (`worker/`) polls the four indexes every 10 minutes: the first page of
-the product-announcements listing, claude.dev's `posts.json`, and anthropic.com's news and
+A small Cloudflare Worker (`worker/`) polls the five indexes every 10 minutes: the first page of
+the product-announcements and best-practices listings, claude.dev's `posts.json`, and anthropic.com's news and
 research pages. When a slug appears that it hasn't seen before, it dispatches the GitHub Actions
 workflow; the workflow also runs every 6 hours on its own as a backstop. The workflow reads the
 same indexes, scrapes any new posts, and rebuilds every document in `docs/`. If the result differs from the last deploy, it deploys it as a GitHub
@@ -94,7 +95,7 @@ uv sync --group dev
 uv run pytest
 uv run ruff check .             # lint
 uv run update-feed              # normal run
-uv run update-feed --backfill   # also walk every page of the claude.com listing
+uv run update-feed --backfill   # also walk every page of the claude.com listings
 uv run update-feed --refresh    # re-fetch all known posts, overwriting stored data
 ```
 

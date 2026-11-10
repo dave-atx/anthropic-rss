@@ -118,6 +118,17 @@ def test_listing_matches_off_site_posts_only_on_cards_and_known_hosts():
     ]
 
 
+def test_listing_skips_webinar_cards_quietly(caplog):
+    html = f"""
+        <a {CARD} href="https://anthropic.ondemand.goldcast.io/on-demand/abc">x</a>
+        <a {CARD} href="https://example.com/blog/elsewhere">x</a>
+    """
+    assert parse_listing(html) == []
+    assert [r.getMessage() for r in caplog.records] == [
+        "Skipping listing card on an unsupported host: https://example.com/blog/elsewhere"
+    ]
+
+
 # ── other indexes ─────────────────────────────────────────────────────────────
 
 
@@ -237,10 +248,12 @@ def test_anthropic_index_takes_each_slug_from_its_own_post():
 
 def test_discover_merges_indexes_listing_first(monkeypatch):
     monkeypatch.setattr(scrape.time, "sleep", lambda _s: None)
-    monkeypatch.setattr(
-        scrape, "list_slugs", lambda: [("moved", f"{ARTICLES}/moved"), ("a", f"{ARTICLES}/a")]
-    )
-    monkeypatch.setattr(scrape, "scrape_all_pages", lambda: pytest.fail("not a backfill"))
+    listings = {
+        scrape.LISTING_URLS[0]: [("moved", f"{ARTICLES}/moved"), ("a", f"{ARTICLES}/a")],
+        scrape.LISTING_URLS[1]: [("a", f"{ARTICLES}/a"), ("tip", f"{ARTICLES}/tip")],
+    }
+    monkeypatch.setattr(scrape, "list_slugs", listings.__getitem__)
+    monkeypatch.setattr(scrape, "scrape_all_pages", lambda _u: pytest.fail("not a backfill"))
     monkeypatch.setattr(
         scrape, "list_claude_dev", lambda: [("moved", "https://claude.dev/blog/moved/")]
     )
@@ -250,6 +263,7 @@ def test_discover_merges_indexes_listing_first(monkeypatch):
     assert discover() == [
         ("moved", f"{ARTICLES}/moved"),
         ("a", f"{ARTICLES}/a"),
+        ("tip", f"{ARTICLES}/tip"),
         ("news-post", "https://www.anthropic.com/news/x"),
         ("research-post", "https://www.anthropic.com/research/x"),
     ]
@@ -257,7 +271,7 @@ def test_discover_merges_indexes_listing_first(monkeypatch):
 
 def test_backfill_adds_research_from_the_sitemap(monkeypatch):
     monkeypatch.setattr(scrape.time, "sleep", lambda _s: None)
-    monkeypatch.setattr(scrape, "scrape_all_pages", lambda: [("a", f"{ARTICLES}/a")])
+    monkeypatch.setattr(scrape, "scrape_all_pages", lambda _u: [("a", f"{ARTICLES}/a")])
     monkeypatch.setattr(scrape, "list_claude_dev", lambda: [])
     monkeypatch.setattr(scrape, "list_anthropic", lambda d: [])
     monkeypatch.setattr(

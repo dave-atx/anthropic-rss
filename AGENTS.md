@@ -1,6 +1,7 @@
 # claude-blog-rss
 
-Scrapes Claude product announcements (`claude.com/resources/product-announcements`), the
+Scrapes Claude product announcements and best practices (`claude.com/resources/product-announcements`,
+`claude.com/resources/best-practices`), the
 claude.dev blog, and anthropic.com news and research posts, and publishes them as one Atom 1.0 +
 JSON Feed 1.1 feed via GitHub Pages, with per-year archives under RFC 5005. Until October 2026 it
 scraped the whole Claude blog (`claude.com/blog`, then `claude.com/resources/articles`); those
@@ -13,7 +14,7 @@ Six modules in `claude_blog_rss/`, ~1,300 lines total. Read them in this order:
 | File | Role |
 |---|---|
 | `models.py` | `Post` TypedDict — the stored schema. **Start here**; it documents every field. |
-| `scrape.py` | HTTP + HTML parsing. The four indexes (`discover`), post pages (one parser per host), sitemap. |
+| `scrape.py` | HTTP + HTML parsing. The five indexes (`discover`), post pages (one parser per host), sitemap. |
 | `jsonfeed.py` | `Post` ⇄ JSON Feed 1.1. This is the **state layer**, not just an output format. |
 | `archives.py` | Decides which posts go in which published document (year buckets). |
 | `feed.py` | Turns `Post` dicts into Atom XML via `feedgen`, including RFC 5005 archives. |
@@ -30,7 +31,7 @@ uv run pytest -q          # 114 tests, all offline (HTML fixtures, no network)
 uv run ruff check .
 uv run ruff format .
 uv run update-feed        # real run — hits the network
-uv run update-feed --backfill   # every page of the claude.com listing
+uv run update-feed --backfill   # every page of the claude.com listings
 uv run update-feed --refresh    # re-fetch all known posts, overwriting stored data
 uv run update-feed --refresh SLUG...   # re-fetch just these
 ```
@@ -48,9 +49,10 @@ On-site articles are matched by `href` alone (`/resources/articles/<slug>`), so 
 markup churn. Both `list_slugs` and the Worker *raise* on a listing with no article links — that
 means the site moved, and the old code silently reported "no new posts" for days.
 
-**Posts are discovered from four indexes**, merged by `scrape.discover` in this order (first
-URL wins for a slug in several): the claude.com product-announcements listing (`list_slugs`, the
-articles listing filtered to one category; its cards link to `/resources/articles/<slug>`),
+**Posts are discovered from five indexes**, merged by `scrape.discover` in this order (first
+URL wins for a slug in several): the claude.com product-announcements and best-practices listings
+(`LISTING_URLS`, read by `list_slugs`; each is the articles listing filtered to one category, and
+its cards link to `/resources/articles/<slug>`; best practices was added in November 2026),
 claude.dev's `posts.json` (`list_claude_dev`; `rss.xml` and `llms.txt` list the same posts), and
 anthropic.com's `/news` and `/research` pages (`list_anthropic`). anthropic.com has no feed.
 In October 2026 it folded `/engineering` into `/research` (`/engineering/<slug>` 308-redirects to
@@ -70,13 +72,14 @@ skipped quietly by `fetch_post`; add to that tuple rather than letting it log an
 claude.dev lists all its posts on one page; anthropic.com's pages only the newest, which is
 enough for a normal run. The full set is only in anthropic.com's sitemap (its `lastmod` is the
 last edit, not the publish date, so it can't date anything): `--backfill` reads it for
-`/research/<slug>` posts (`list_anthropic_sitemap`), alongside every page of the claude.com
-listing. Not for `/news`, whose sitemap entries include category pages.
+`/research/<slug>` posts (`list_anthropic_sitemap`), alongside every page of both claude.com
+listings. Not for `/news`, whose sitemap entries include category pages.
 
 **Some listing cards are posts on other hosts**, scraped for full text like the rest:
 `claude.dev/blog` and `anthropic.com` (news, research, model-launch pages). These are matched
 only on listing cards (`ResourceCard…__card`), because the nav links to anthropic.com too, and
-only on hosts with a parser; any other off-site card is logged and skipped. Their slug is the URL's
+only on hosts with a parser; any other off-site card is logged and skipped (webinar cards on
+`_IGNORED_CARD_HOSTS` quietly). Their slug is the URL's
 last path segment, which is deliberate: several are old `claude.com/blog` posts that moved to
 claude.dev, and keeping the slug keeps their entry id, so they don't re-appear as new.
 `fetch_post` picks the parser from the URL *after redirects* and stores that final URL. It parses
@@ -166,7 +169,7 @@ Sanity-check with `gh repo view --json nameWithOwner` before trusting any `gh` o
 **The Worker in `worker/` only detects; it never scrapes.** It runs on Cloudflare's free plan,
 whose 10 ms CPU cap per invocation is why it's TypeScript with a regex scan rather than the Python
 code (HTMLRewriter took ~14 ms on the ~800 KB Webflow listing; the regex scan ~3 ms). Every 10 minutes it
-reads the same four indexes in parallel, compares slugs with the set stored in KV, and on a new one
+reads the same five indexes in parallel, compares slugs with the set stored in KV, and on a new one
 calls `workflow_dispatch` on `update-feed.yml`. KV is written only after a successful dispatch, so
 failures retry next tick, and known slugs accumulate rather than being replaced, so an index that
 fails one tick doesn't make its posts look new the next; the poll still throws so the failure is

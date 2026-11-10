@@ -1,8 +1,8 @@
 """Discover and scrape posts from Anthropic's sites.
 
-Four indexes are read (see `discover`): claude.com's product-announcements
-listing, claude.dev's post index, and anthropic.com's news and research
-pages. Every post is keyed by the last segment of its URL, its slug.
+Five indexes are read (see `discover`): claude.com's product-announcements
+and best-practices listings, claude.dev's post index, and anthropic.com's news
+and research pages. Every post is keyed by the last segment of its URL, its slug.
 
 The blog lived at claude.com/blog (Webflow) until October 2026, when it moved
 to claude.com/resources/articles (Next.js). Old /blog/<slug> URLs 308-redirect
@@ -28,9 +28,12 @@ from bs4 import BeautifulSoup
 from .models import Post
 
 BASE_URL = "https://claude.com/resources/articles"
-# The articles listing filtered to one category. Its cards link to articles
-# under BASE_URL, and to launch posts on anthropic.com.
-LISTING_URL = "https://claude.com/resources/product-announcements"
+# The articles listing filtered to one category each. Their cards link to
+# articles under BASE_URL, and to posts on claude.dev and anthropic.com.
+LISTING_URLS = (
+    "https://claude.com/resources/product-announcements",
+    "https://claude.com/resources/best-practices",
+)
 CLAUDE_DEV_INDEX_URL = "https://claude.dev/posts.json"
 ANTHROPIC_URL = "https://www.anthropic.com"
 # anthropic.com index pages, with the `articleType` of the posts they list.
@@ -39,10 +42,15 @@ ANTHROPIC_URL = "https://www.anthropic.com"
 ANTHROPIC_INDEXES = {"news": "news", "research": "research"}
 ANTHROPIC_SITEMAP_URL = f"{ANTHROPIC_URL}/sitemap.xml"
 # Index entries that redirect to one of these aren't posts (an old engineering
-# "post" that is now a docs page, a research one now an Academy tutorial).
-# Matched on the URL after redirects, so they're still requested once per
-# run, but skipped quietly.
-SKIPPED_URL_PREFIXES = ("https://code.claude.com/docs/", "https://academy.claude.com/")
+# "post" that is now a docs page, a research one now an Academy tutorial), or
+# are pages the parsers can't read (a research feature with its own layout,
+# found only in the sitemap). Matched on the URL after redirects, so they're
+# still requested once per run, but skipped quietly.
+SKIPPED_URL_PREFIXES = (
+    "https://code.claude.com/docs/",
+    "https://academy.claude.com/",
+    f"{ANTHROPIC_URL}/research/discovering-vulnerabilities-with-claude",
+)
 SITEMAP_URL = "https://claude.com/sitemap.xml"
 PAGINATION_PARAM = "page"
 REQUEST_DELAY = 1.0
@@ -57,6 +65,10 @@ _ARTICLE_HREF = re.compile(r"^(?:https://claude\.com)?/resources/articles/([^/?#
 _EXTERNAL_HREF = re.compile(
     r"^https://(?:claude\.dev/blog|(?:www\.)?anthropic\.com)/(?:[^/?#]+/)*([^/?#]+)/?$"
 )
+
+# Listing cards on these hosts aren't posts (webinar recordings); skipped
+# without the warning other unsupported hosts get.
+_IGNORED_CARD_HOSTS = ("anthropic.ondemand.goldcast.io",)
 
 logger = logging.getLogger(__name__)
 
@@ -83,14 +95,14 @@ def get_session() -> requests.Session:
     return _shared_session
 
 
-def list_slugs(page: int = 1) -> list[tuple[str, str]]:
-    """Return [(slug, url), ...] from the listing page, deduped, in page order.
+def list_slugs(listing: str = LISTING_URLS[0], page: int = 1) -> list[tuple[str, str]]:
+    """Return [(slug, url), ...] from a listing page, deduped, in page order.
 
     Raises if the page has no on-site article links at all: the listing always
     has some, so an empty result means the markup or URL scheme moved and the
     run can't be trusted.
     """
-    url = LISTING_URL if page == 1 else f"{LISTING_URL}?{PAGINATION_PARAM}={page}"
+    url = listing if page == 1 else f"{listing}?{PAGINATION_PARAM}={page}"
     resp = get_session().get(url, timeout=30)
     resp.raise_for_status()
     results = parse_listing(resp.text)
@@ -122,7 +134,7 @@ def parse_listing(html_text: str) -> list[tuple[str, str]]:
         elif m := _EXTERNAL_HREF.match(href):
             slug, url = m.group(1), href
         else:
-            if href.startswith("http"):
+            if href.startswith("http") and urlsplit(href).hostname not in _IGNORED_CARD_HOSTS:
                 logger.warning("Skipping listing card on an unsupported host: %s", href)
             continue
         if slug not in seen:
@@ -245,8 +257,8 @@ def parse_anthropic_index(html_text: str, directory: str) -> list[tuple[str, str
 def discover(backfill: bool = False) -> list[tuple[str, str]]:
     """Return [(slug, url), ...] for every post the indexes list, deduped.
 
-    The claude.com listing comes first, so a post it shares with another
-    index keeps the listing's URL. Only the claude.com listing paginates: page
+    The claude.com listings come first, so a post one shares with another
+    index keeps the listing's URL. Only the claude.com listings paginate: page
     1 unless `backfill`. claude.dev lists every post; anthropic.com's pages
     only the newest, so a backfill adds its sitemap's research posts. Any
     index failing raises, like a listing failure, since a partial view can't
@@ -254,7 +266,7 @@ def discover(backfill: bool = False) -> list[tuple[str, str]]:
     """
     found: dict[str, str] = {}
     sources = [
-        lambda: scrape_all_pages() if backfill else list_slugs(),
+        *(lambda u=u: scrape_all_pages(u) if backfill else list_slugs(u) for u in LISTING_URLS),
         list_claude_dev,
         *(lambda d=d: list_anthropic(d) for d in ANTHROPIC_INDEXES),
     ]
@@ -703,8 +715,10 @@ def fetch_sitemap_lastmods() -> dict[str, datetime]:
     return _parse_sitemap(resp.content)
 
 
-def scrape_all_pages(max_pages: int = 40, delay: float = REQUEST_DELAY) -> list[tuple[str, str]]:
-    """Walk listing pages and return unique (slug, url) pairs.
+def scrape_all_pages(
+    listing: str = LISTING_URLS[0], max_pages: int = 40, delay: float = REQUEST_DELAY
+) -> list[tuple[str, str]]:
+    """Walk a listing's pages and return unique (slug, url) pairs.
 
     `?page=N` is cumulative ("load more"): it renders every card up to page N,
     and past the end it keeps rendering the full list. So stop at the first
@@ -712,9 +726,9 @@ def scrape_all_pages(max_pages: int = 40, delay: float = REQUEST_DELAY) -> list[
     """
     all_slugs: dict[str, str] = {}
     for page in range(1, max_pages + 1):
-        logger.info("Fetching listing page %d", page)
+        logger.info("Fetching %s page %d", listing, page)
         before = len(all_slugs)
-        for slug, url in list_slugs(page):
+        for slug, url in list_slugs(listing, page):
             all_slugs.setdefault(slug, url)
         if len(all_slugs) == before:
             logger.info("Page %d added no new slugs, stopping.", page)

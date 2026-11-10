@@ -11,7 +11,8 @@ import { anthropicSlugs, claudeDevSlugs, listingSlugs, poll } from "../src/index
 // the same file, so the two can't drift apart.
 const EXPECTED = JSON.parse(expectedRaw) as Record<string, string[]>;
 
-// What a poll sees across all four indexes, in scrape.discover's order.
+// What a poll sees across all five indexes, in scrape.discover's order. The
+// best-practices listing reuses the product-announcements fixture.
 const ALL_SLUGS = [
 	...new Set([
 		...listingSlugs(listingHtml),
@@ -23,6 +24,7 @@ const ALL_SLUGS = [
 
 const BODIES: Record<string, string> = {
 	"https://claude.com/resources/product-announcements": listingHtml,
+	"https://claude.com/resources/best-practices": listingHtml,
 	"https://claude.dev/posts.json": claudeDevJson,
 	"https://www.anthropic.com/news": newsHtml,
 	"https://www.anthropic.com/research": researchHtml,

@@ -1,4 +1,4 @@
-// Cheap new-post detector. Each cron tick reads the four post indexes the
+// Cheap new-post detector. Each cron tick reads the five post indexes the
 // Python pipeline reads (scrape.discover), pulls out the post slugs, and if any
 // slug is new since the last tick, starts the GitHub Actions feed build.
 // Everything else — scraping posts, dates, rendering — stays in the Python
@@ -73,6 +73,7 @@ type Source = { url: string; slugs: (body: string) => string[] };
 // yielding none means it moved or changed shape.
 export const SOURCES: Source[] = [
 	{ url: "https://claude.com/resources/product-announcements", slugs: listingSlugs },
+	{ url: "https://claude.com/resources/best-practices", slugs: listingSlugs },
 	{ url: "https://claude.dev/posts.json", slugs: claudeDevSlugs },
 	{ url: "https://www.anthropic.com/news", slugs: (html) => anthropicSlugs(html, "news") },
 	{
