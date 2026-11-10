@@ -1,0 +1,13 @@
+// Throwaway spike: measures the CPU time of parsing a post page in a Worker.
+// Results and how to re-run: FINDINGS.md. Not deployed; deploy with
+// `npx wrangler deploy -c spike/wrangler.jsonc` and delete afterwards with
+// `npx wrangler delete -c spike/wrangler.jsonc`.
+{
+	"$schema": "../node_modules/wrangler/config-schema.json",
+	"name": "claude-blog-rss-parse-spike",
+	"main": "worker.ts",
+	"compatibility_date": "2026-10-04",
+	"workers_dev": true,
+	"rules": [{ "type": "Text", "globs": ["**/*.html"], "fallthrough": true }],
+	"observability": { "enabled": true },
+}
