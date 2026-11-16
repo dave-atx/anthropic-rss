@@ -1,7 +1,9 @@
 import { env } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
 import newsHtml from "../../tests/fixtures/anthropic_news_index.html?raw";
+import newsMinifiedHtml from "../../tests/fixtures/anthropic_news_index_minified.html?raw";
 import researchHtml from "../../tests/fixtures/anthropic_research_index.html?raw";
+import researchMinifiedHtml from "../../tests/fixtures/anthropic_research_index_minified.html?raw";
 import listingHtml from "../../tests/fixtures/articles_listing.html?raw";
 import claudeDevJson from "../../tests/fixtures/claude_dev_posts.json?raw";
 import expectedRaw from "../../tests/fixtures/index_slugs.json?raw";
@@ -67,6 +69,8 @@ describe("index parsers match the Python scraper", () => {
 	it.each([
 		["news", newsHtml, "anthropic_news_index.html"],
 		["research", researchHtml, "anthropic_research_index.html"],
+		["news", newsMinifiedHtml, "anthropic_news_index_minified.html"],
+		["research", researchMinifiedHtml, "anthropic_research_index_minified.html"],
 	] as const)("on anthropic.com/%s, from links to the newest posts only", (directory, html, fixture) => {
 		const slugs = anthropicSlugs(html, directory);
 		expect(slugs.length).toBeGreaterThanOrEqual(15);
@@ -77,6 +81,8 @@ describe("index parsers match the Python scraper", () => {
 	it("skips topic links to category pages", () => {
 		const html = `
 			<a class="TopicLink-module-scss-module__Ab12Cd__link" href="/news/product">x</a>
+			<a class="wN10Da_link bxgyUW_category-link" href="/news/policy">x</a>
+			<a class="_74-EFW_link" href="/news/features">x</a>
 			<a class="TableView-module-scss-module__Ab12Cd__title-link" href="/news/a-post">x</a>
 			<a href="https://www.anthropic.com/news/absolute/">x</a>
 			<a href="/research/team/interpretability">x</a>`;

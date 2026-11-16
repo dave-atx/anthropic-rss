@@ -16,6 +16,7 @@ from claude_blog_rss.scrape import (
     _extract_image,
     _extract_json_ld,
     _extract_summary,
+    _module_class,
     _parse_anthropic,
     _parse_claude_article,
     _parse_claude_dev,
@@ -147,6 +148,12 @@ def test_index_fixtures_match_the_shared_expectations():
         "anthropic_research_index.html": parse_anthropic_index(
             (FIXTURES / "anthropic_research_index.html").read_text(), "research"
         ),
+        "anthropic_news_index_minified.html": parse_anthropic_index(
+            (FIXTURES / "anthropic_news_index_minified.html").read_text(), "news"
+        ),
+        "anthropic_research_index_minified.html": parse_anthropic_index(
+            (FIXTURES / "anthropic_research_index_minified.html").read_text(), "research"
+        ),
     }
     assert {name: [slug for slug, _url in posts] for name, posts in found.items()} == expected
 
@@ -180,6 +187,14 @@ def test_anthropic_news_index_reads_posts_from_page_data():
     # Research articles in the news page's data, and category pages it links.
     assert "claude-scorpion-toxin-binder-design" not in slugs
     assert not slugs & {"announcements", "partnerships", "policy", "product"}
+
+
+def test_anthropic_minified_news_index_skips_category_links():
+    # Since November 2026 topic links are `wN10Da_link`, not `TopicLink-…__link`.
+    html = (FIXTURES / "anthropic_news_index_minified.html").read_text()
+    slugs = [slug for slug, _url in parse_anthropic_index(html, "news")]
+    assert "roadshow-launch" in slugs
+    assert not {"announcements", "product", "policy", "partnerships"} & set(slugs)
 
 
 def test_anthropic_research_index():
@@ -491,6 +506,73 @@ def test_anthropic_launch_page_takes_outer_body_and_footnotes():
     # Four benchmark charts, each now a link; the tab icons are just dropped.
     assert "<svg" not in body
     assert body.count(f'<p><a href="{url}">View this chart on anthropic.com</a></p>') == 4
+
+
+def test_anthropic_minified_research_post():
+    # November 2026: class names are minified (`PA4F1q_body`), the hero's
+    # metadata is a <dl>, and footnotes sit in their own div after the body.
+    url = "https://www.anthropic.com/research/provable-inference"
+    post = _parse_anthropic(fixture_soup("anthropic_research_post_minified.html"), url)
+    body = post["html_body"]
+    assert post["title"] == "Progress on provable inference for large language models"
+    assert post["pub_date"] == "2026-11-02T00:00:00+00:00"
+    assert post["categories"] == [
+        "Frontier Red Team",
+        "Transparency",
+        "Cybersecurity",
+        "Global stability",
+        "Open source",
+        "Coding",
+    ]
+    assert post["authors"] == []
+    assert body.startswith(
+        '<p><a href="https://www.anthropic.com/document/flashprove-technical-report">'
+        "Read the technical report</a></p>"
+        '<div class="PA4F1q_body" data-article-body="true"'
+    )
+    assert body.index('class="PA4F1q_body"') < body.index('class="EaEYjq_Footnotes"')
+    assert body.count('class="EaEYjq_Footnotes"') == 1
+    # The footnotes' back-arrows are icons in links, not charts.
+    assert 'role="doc-backlink"' in body
+    assert "<svg" not in body and "View this chart" not in body
+
+
+def test_anthropic_minified_news_post():
+    url = "https://www.anthropic.com/news/roadshow-launch"
+    post = _parse_anthropic(fixture_soup("anthropic_news_post_minified.html"), url)
+    assert post["title"] == "Anthropic launches roadshow for proposed initial public offering"
+    assert post["pub_date"] == "2026-11-10T00:00:00+00:00"
+    assert post["categories"] == ["Announcements", "Funding"]
+    assert post["html_body"].startswith('<div class="PA4F1q_body" data-article-body="true"')
+    assert "launched the roadshow" in post["html_body"]
+
+
+def test_anthropic_minified_launch_page():
+    url = "https://www.anthropic.com/claude-fable-and-mythos-5-2"
+    post = _parse_anthropic(fixture_soup("anthropic_launch_page_minified.html"), url)
+    body = post["html_body"]
+    assert post["title"] == "Introducing Claude Fable 5.2 and Claude Mythos 5.2"
+    assert post["pub_date"] == "2026-11-09T00:00:00+00:00"
+    # Testimonial cards carry `…_label`/`…_value` "Author" cells; they aren't bylines.
+    assert post["authors"] == []
+    assert body.startswith('<div class="PA4F1q_body JsRY2q_launch-body"')
+    # Testimonials nest their own `…_body` divs; only the outer body is taken.
+    assert body.count('data-article-body="true"') == 1
+    assert body.count("models that are designed to tackle the most daunting") == 1
+    assert body.count('class="c3KnZG_footnotes') == 1
+    assert body.index("JsRY2q_launch-body") < body.index("c3KnZG_footnotes")
+    assert "<svg" not in body and "<button" not in body
+
+
+def test_module_class_matches_minified_tokens_only_when_asked():
+    full = _module_class("Body", "body")
+    short = _module_class("Body", "body", minified=True)
+    for pattern in (full, short):
+        assert pattern.match("Body-module-scss-module__PA4F1q__body")
+        assert not pattern.match("Other-module-scss-module__PA4F1q__body")
+    assert short.match("PA4F1q_body") and short.match("_16pwma_body")
+    assert not full.match("PA4F1q_body")
+    assert not short.match("PA4F1q_body-3--serif") and not short.match("PA4F1q_bodyx")
 
 
 def test_svg_figures_become_links_and_decoration_is_dropped():

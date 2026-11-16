@@ -50,12 +50,12 @@ export function claudeDevSlugs(json: string): string[] {
 
 // The link half of scrape.parse_anthropic_index: links to /<directory>/<slug>
 // in the rendered HTML, except topic links (class
-// TopicLink-module-scss-module__<hash>__link), which go to category pages such
-// as /news/product. Deduped in page order. The Python side also decodes the
+// TopicLink-module-scss-module__<hash>__link, or minified since November 2026,
+// <hash>_link), which go to category pages such as /news/product. Deduped in page order. The Python side also decodes the
 // page's embedded Next.js payload, which lists more posts, but that costs
 // ~6 ms of CPU. Each page links its ~25 newest posts, and a new post is always
 // among the newest, so links are enough to detect one.
-const TOPIC_LINK = /(?:^|\s)TopicLink-module-scss-module__[\w-]+__link(?:\s|$)/;
+const TOPIC_LINK = /(?:^|\s)(?:TopicLink-module-scss-module__[\w-]+__|_?[A-Za-z0-9-]{6}_)link(?:\s|$)/;
 
 export function anthropicSlugs(html: string, directory: "news" | "research"): string[] {
 	const postHref = new RegExp(`^(?:https://www\\.anthropic\\.com)?/${directory}/([^/?#]+)/?$`);
