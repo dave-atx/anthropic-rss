@@ -2,7 +2,12 @@
 
 from datetime import UTC, datetime
 
-from claude_blog_rss.main import _preserve_pub_times, enrich_pub_dates, stamp_discovery_times
+from claude_blog_rss.main import (
+    _preserve_pub_times,
+    check_bodies,
+    enrich_pub_dates,
+    stamp_discovery_times,
+)
 
 
 def _post(pub_date: str, precise: bool = False) -> dict:
@@ -163,3 +168,14 @@ def test_enrich_replaces_discovery_time_with_sitemap_time():
     assert enrich_pub_dates(posts, lastmods) == 1
     assert posts["a"]["pub_date"] == "2026-09-22T17:31:04+00:00"
     assert posts["a"]["pub_date_precise"] is True
+
+
+def test_check_bodies_keeps_new_bodyless_posts_but_not_lossy_refetches():
+    posts = {"old": {"html_body": "<p>stored</p>"}, "fine": {"html_body": "<p>x</p>"}}
+    fetched = {
+        "old": {"html_body": ""},
+        "new": {"html_body": ""},
+        "fine": {"html_body": "<p>y</p>"},
+    }
+    assert check_bodies(posts, fetched) == ["old", "new"]
+    assert fetched == {"new": {"html_body": ""}, "fine": {"html_body": "<p>y</p>"}}

@@ -3,6 +3,7 @@
 import argparse
 import json
 import logging
+import sys
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -20,6 +21,10 @@ ROOT = Path(__file__).parent.parent
 DOCS_PATH = ROOT / "docs"
 CURRENT_JSON_PATH = DOCS_PATH / "feed.json"
 ATOM_PATH = DOCS_PATH / "atom.xml"
+
+# The run saved everything, but some fetched posts had no body. The workflow
+# deploys anyway, then fails, so a broken parser is noticed (and emailed).
+EXIT_MISSING_BODIES = 3
 
 
 def load_state() -> dict[str, Post]:
@@ -219,6 +224,27 @@ def fetch_new_posts(
     return fetched
 
 
+def check_bodies(posts: dict[str, Post], fetched: dict[str, Post]) -> list[str]:
+    """Return the slugs in `fetched` that came back with no body.
+
+    An empty body almost always means the site's markup changed under the
+    parser, which used to go unnoticed for weeks. A new post is still kept, so
+    its title and summary go out; a refetch that would erase a stored body is
+    dropped from `fetched` instead, keeping the stored copy.
+    """
+    missing = []
+    for slug, post in list(fetched.items()):
+        if post["html_body"]:
+            continue
+        missing.append(slug)
+        if posts.get(slug, {}).get("html_body"):
+            logger.error("No body for %s; keeping the stored copy", slug)
+            del fetched[slug]
+        else:
+            logger.error("No body for %s; saving it without one", slug)
+    return missing
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Update the feeds")
     parser.add_argument(
@@ -233,10 +259,22 @@ def main() -> None:
         help="Re-fetch already-known posts too, overwriting their stored data: the given "
         "slugs, or every post if none are given (use after a scraper change)",
     )
+    parser.add_argument(
+        "--remove",
+        nargs="+",
+        default=[],
+        metavar="SLUG",
+        help="Delete these posts from the stored corpus (for pages that aren't posts)",
+    )
     args = parser.parse_args()
 
     posts = load_state()
     logger.info("Loaded %d known posts", len(posts))
+    for slug in args.remove:
+        if posts.pop(slug, None) is None:
+            logger.warning("Can't remove unknown slug %r", slug)
+        else:
+            logger.info("Removed %s", slug)
 
     listing = discover(backfill=args.backfill)
 
@@ -253,8 +291,10 @@ def main() -> None:
         new_slugs = [(slug, url) for slug, url in listing if slug not in posts]
         logger.info("New posts to fetch: %d", len(new_slugs))
 
+    missing_bodies: list[str] = []
     if new_slugs:
         fetched = fetch_new_posts(new_slugs)
+        missing_bodies = check_bodies(posts, fetched)
         stamp_discovery_times(
             {slug: post for slug, post in fetched.items() if slug not in posts},
             datetime.now(UTC),
@@ -274,6 +314,13 @@ def main() -> None:
     # reproduce them (the working tree may have started empty).
     save_documents(posts)
     logger.info("Saved %d total posts", len(posts))
+    if missing_bodies:
+        logger.error(
+            "%d post(s) had no body; fix the parser, then refresh: %s",
+            len(missing_bodies),
+            " ".join(missing_bodies),
+        )
+        sys.exit(EXIT_MISSING_BODIES)
 
 
 if __name__ == "__main__":

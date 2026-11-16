@@ -27,13 +27,14 @@ Data flows one direction: `scrape` → `main` → `{jsonfeed, archives, feed}`. 
 
 ```bash
 uv sync --group dev
-uv run pytest -q          # 114 tests, all offline (HTML fixtures, no network)
+uv run pytest -q          # 121 tests, all offline (HTML fixtures, no network)
 uv run ruff check .
 uv run ruff format .
 uv run update-feed        # real run — hits the network
 uv run update-feed --backfill   # every page of the claude.com listings
 uv run update-feed --refresh    # re-fetch all known posts, overwriting stored data
 uv run update-feed --refresh SLUG...   # re-fetch just these
+uv run update-feed --remove SLUG...    # delete pages that aren't posts from the corpus
 ```
 
 CI (`.github/workflows/ci.yml`) runs `ruff check`, `ruff format --check`, and `pytest` on
@@ -96,6 +97,13 @@ real publish time, which is stored with `pub_date_precise`.
 `_module_class` matches around it; never hard-code a hashed token. The body is
 `div.text-rich-text--article` (unhashed). Authors come from the JSON-LD `author` list, falling
 back to the sidebar; categories come from the sidebar's Category links.
+Since November 2026 anthropic.com serves *minified* module classes, `PA4F1q_body` (hash, then
+local name; a leading `_` if the hash starts with a digit), with no component name. Its patterns
+pass `minified=True` to match both forms. The claude.com sidebar patterns deliberately don't: on
+anthropic.com a bare `…_label` also matches testimonial attribution cells, which then came out
+as authors. The switch is what left every anthropic.com post from Nov 2–16 bodyless, and let
+the news index's category links (`wN10Da_link`, once `TopicLink-…__link`) in as 7 empty posts;
+they are deleted with the `remove` workflow input (`--remove`).
 
 **BeautifulSoup matches class tokens natively.** `class_="foo"` already matches
 `class="a foo b"` and does *not* match `class="foobar"`. Do not reintroduce
@@ -262,5 +270,9 @@ external spec and `_`-prefixed extension fields.
   `USER_AGENT`. This is an unofficial scraper of someone else's site.
 - Network failures on a single post are logged and skipped (`fetch_post` returns `None`);
   a listing-page failure crashes the run deliberately, since it means the whole run is unreliable.
+  A fetched post with an empty body is the signature of a markup change: `check_bodies` saves a
+  new one anyway (title and summary still go out), keeps the stored copy over a bodyless
+  refetch, and `update-feed` exits 3 after saving. The workflow deploys, then fails its last
+  step so the breakage is emailed. Fix the parser, then `refresh` the slugs the log names.
 - Tests are fully offline. Keep them that way — add an HTML fixture to `tests/fixtures/`
   rather than reaching for the network or mocking `requests` ad hoc.

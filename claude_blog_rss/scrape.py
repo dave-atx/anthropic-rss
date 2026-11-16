@@ -210,8 +210,6 @@ def parse_anthropic_sitemap(xml_bytes: bytes, directory: str) -> list[tuple[str,
 _NEXT_PUSH = re.compile(r'self\.__next_f\.push\(\[1,("[^"\\]*(?:\\.[^"\\]*)*")\]\)')
 # Where an article object opens in the decoded payload.
 _ARTICLE_OPENING = re.compile(r'\{"_id":"[^"\\]*","_type":"article",')
-# A link to a category page (/news/product), on topic chips and table rows.
-_TOPIC_LINK = re.compile(r"^TopicLink-module-scss-module__[\w-]+__link$")
 
 
 def _next_payload(html_text: str) -> str:
@@ -359,13 +357,43 @@ def _parse_claude_dev(soup: BeautifulSoup, url: str) -> Post:
     )
 
 
-_ANTHROPIC_BODY = re.compile(r"^Body-module-scss-module__[\w-]+__body$")
-_ANTHROPIC_FOOTNOTES = re.compile(r"^MooFootnotes-module-scss-module__[\w-]+__footnotes$")
-_ANTHROPIC_SUBJECTS = re.compile(r"^PostDetail-module-scss-module__[\w-]+__subjects$")
+def _module_class(component: str, name: str, *, minified: bool = False) -> re.Pattern[str]:
+    """Match a CSS-module class token like `DetailSidebar-module-scss-module__3RcHtG__label`.
+
+    The middle segment is a build hash that changes on redeploys, so match
+    around it rather than on the whole token. It can contain `-` (`yAH-gG`).
+    `component` and `name` are regexes.
+
+    With `minified`, also match the short form anthropic.com has served since
+    November 2026: `3RcHtG_label`, with a leading `_` when the hash starts with
+    a digit (`_74-EFW_edge`). It has no component to check, so it is opt-in:
+    on anthropic.com a sidebar pattern would match every `…_label`.
+    """
+    short = r"|_?[A-Za-z0-9-]{6}_" if minified else ""
+    return re.compile(rf"^(?:{component}-module-scss-module__[\w-]+__{short})(?:{name})$")
+
+
+# A link to a category page (/news/product), on topic chips and table rows.
+# Minified (since November 2026) it is `wN10Da_link`: any `<hash>_link` token,
+# since the component name is gone. Post links' tokens never end in exactly
+# `_link` (`bxgyUW_title-link`, `nUeDbq_metaTitleLink`).
+_TOPIC_LINK = _module_class("TopicLink", "link", minified=True)
+
+
+# Since November 2026 anthropic.com serves minified class names (`PA4F1q_body`),
+# which keep the hash and local name but drop the component; these patterns
+# match both forms, so the component names below only matter for older pages.
+_ANTHROPIC_BODY = _module_class("Body", "body", minified=True)
+# `MooFootnotes…__footnotes` on launch pages; article pages now also put their
+# footnotes in a `…_Footnotes` div after the body.
+_ANTHROPIC_FOOTNOTES = _module_class(r"\w+", "[Ff]ootnotes", minified=True)
+_ANTHROPIC_SUBJECTS = _module_class("PostDetail", "subjects", minified=True)
 # Since October 2026 the page hero holds the category link, and on a research
-# post that is a paper elsewhere, the link to it ("Read the paper").
-_ANTHROPIC_HERO_METADATA = re.compile(r"^ArticleHero-module-scss-module__[\w-]+__Metadata$")
-_ANTHROPIC_HERO_ACTIONS = re.compile(r"^Actions-module-scss-module__[\w-]+__Actions$")
+# post that is a paper elsewhere, the link to it ("Read the paper"). In
+# November 2026 the hero's `Metadata` became a `Metalist` <dl> (Published,
+# Category or Team, Topics); only the latter two hold links.
+_ANTHROPIC_HERO_METADATA = _module_class("ArticleHero", "Meta(?:data|list)", minified=True)
+_ANTHROPIC_HERO_ACTIONS = _module_class("Actions", "Actions", minified=True)
 
 
 def _parse_anthropic(soup: BeautifulSoup, url: str) -> Post:
@@ -387,7 +415,11 @@ def _parse_anthropic(soup: BeautifulSoup, url: str) -> Post:
         for el in root.find_all(class_=_ANTHROPIC_BODY)
         if not el.find_parent(class_=_ANTHROPIC_BODY)
     ]
-    bodies += root.find_all(class_=_ANTHROPIC_FOOTNOTES)
+    bodies += [
+        el
+        for el in root.find_all(class_=_ANTHROPIC_FOOTNOTES)
+        if not el.find_parent(class_=[_ANTHROPIC_BODY, _ANTHROPIC_FOOTNOTES])
+    ]
     actions = root.find(class_=_ANTHROPIC_HERO_ACTIONS)
     links = actions.find_all("a", href=True) if actions else []
     if links:
@@ -512,8 +544,9 @@ def _replace_svg_figures(el, base_url: str) -> None:
     site's stylesheet, so they wouldn't render standalone anyway. A chart's
     drawing is the SVG itself, or the `role="img"` wrapper claude.dev puts
     around it; that wrapper's aria-label is a prose description of the chart,
-    which is kept. Any other SVG (icons, avatars, anything hidden from screen
-    readers without such a wrapper) is decoration and just removed.
+    which is kept. Any other SVG (icons, avatars, anything inside a link, or
+    hidden from screen readers without such a wrapper) is decoration and just
+    removed.
     """
     host = urlsplit(base_url).netloc.removeprefix("www.")
     for svg in el.find_all("svg"):
@@ -521,7 +554,9 @@ def _replace_svg_figures(el, base_url: str) -> None:
             continue  # inside a drawing already replaced
         drawing = svg.find_parent(attrs={"role": "img", "aria-label": True})
         if drawing is None and (
-            svg.get("aria-hidden") == "true" or svg.find_parent(attrs={"aria-hidden": "true"})
+            svg.get("aria-hidden") == "true"
+            or svg.find_parent(attrs={"aria-hidden": "true"})
+            or svg.find_parent("a")  # a link's icon, e.g. a footnote's back-arrow
         ):
             svg.decompose()
             continue
@@ -550,15 +585,6 @@ def _extract_body_html(soup: BeautifulSoup) -> str:
     truncated them.
     """
     return "".join(str(div) for div in soup.find_all("div", class_="text-rich-text--article"))
-
-
-def _module_class(component: str, name: str) -> re.Pattern[str]:
-    """Match a CSS-module class token like `DetailSidebar-module-scss-module__3RcHtG__label`.
-
-    The middle segment is a build hash that changes on redeploys, so match
-    around it rather than on the whole token. It can contain `-` (`yAH-gG`).
-    """
-    return re.compile(rf"^{component}-module-scss-module__[\w-]+__{name}$")
 
 
 _SIDEBAR_LABEL = _module_class("DetailSidebar", "label")

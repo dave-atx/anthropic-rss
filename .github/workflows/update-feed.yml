@@ -15,6 +15,10 @@ on:
         description: "Space-separated slugs to re-fetch, overwriting stored data ('all' for every post)"
         type: string
         default: ""
+      remove:
+        description: "Space-separated slugs to delete from the corpus (pages that aren't posts)"
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -53,16 +57,25 @@ jobs:
           restore-keys: posts-state-
 
       - name: Run feed update
+        id: update
         env:
           BACKFILL: ${{ inputs.backfill && '--backfill' || '' }}
           REFRESH: ${{ inputs.refresh }}
-        # REFRESH goes through env, not ${{ }}, so it can't inject shell.
+          REMOVE: ${{ inputs.remove }}
+        # REFRESH and REMOVE go through env, not ${{ }}, so they can't inject shell.
         run: |
           set -f  # slugs are split on spaces below; never glob them
           if [ "$REFRESH" = all ]; then set -- --refresh
           elif [ -n "$REFRESH" ]; then set -- --refresh $REFRESH
           fi
-          uv run update-feed $BACKFILL "$@"
+          if [ -n "$REMOVE" ]; then set -- "$@" --remove $REMOVE; fi
+          # Exit 3: everything was saved, but some posts had no body. Deploy
+          # anyway, and fail at the end (see the last step).
+          status=0
+          uv run update-feed $BACKFILL "$@" || status=$?
+          if [ "$status" = 3 ]; then echo "missing-bodies=true" >> "$GITHUB_OUTPUT"
+          elif [ "$status" != 0 ]; then exit "$status"
+          fi
 
       # Rendering is byte-deterministic, so a digest of docs/ identifies what
       # would be deployed. The state cache is keyed on it: an existing key
@@ -101,3 +114,10 @@ jobs:
         with:
           path: docs/feed.json
           key: posts-state-${{ steps.digest.outputs.sha }}
+
+      # Last, so the posts still deploy. Fails the run so it gets noticed.
+      - name: Fail on posts saved without a body
+        if: steps.update.outputs.missing-bodies == 'true'
+        run: |
+          echo "::error::Some posts were saved without a body; the site's markup has probably changed. The 'Run feed update' log names them."
+          exit 1
